@@ -19,6 +19,7 @@ def main():
     assert admin.headers["Cache-Control"].startswith("no-store")
     assert client.get("/api/orders").status_code == 401
     assert client.get("/api/order-counts").status_code == 401
+    assert client.get("/api/push-public-key").status_code == 401
 
     bad = client.post("/submit", data={"customer_name": "", "phone": "", "address": ""})
     assert bad.status_code == 400
@@ -50,10 +51,14 @@ def main():
     assert "phone-link".encode("utf-8") in login.data
     assert "new-badge".encode("utf-8") in login.data
     assert "开启声音提醒".encode("utf-8") in login.data
-    assert "开启通知提醒".encode("utf-8") in login.data
+    assert "开启手机消息推送".encode("utf-8") in login.data
     assert "手机值守模式".encode("utf-8") in login.data
     assert "watchOverlay".encode("utf-8") in login.data
     assert "有新的客户预约，请尽快联系".encode("utf-8") in login.data
+    push_key = client.get("/api/push-public-key")
+    assert push_key.status_code == 200 and len(push_key.json["publicKey"]) > 60
+    push_test = client.post("/api/push-test")
+    assert push_test.status_code == 200 and push_test.json["sent"] == 0
 
     api_orders = client.get("/api/orders")
     assert api_orders.status_code == 200

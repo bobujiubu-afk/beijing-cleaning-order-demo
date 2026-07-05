@@ -1,16 +1,21 @@
 from datetime import datetime, timedelta
 import hmac
 from io import BytesIO
+import json
 import os
 import re
 import sqlite3
 import time
+import base64
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from openpyxl import Workbook
+from py_vapid import Vapid
+from pywebpush import WebPushException, webpush
 import qrcode
+from cryptography.hazmat.primitives import serialization
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +27,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
 SEED_DEMO = os.environ.get("SEED_DEMO", "1") == "1"
 PUBLIC_SUBMIT_URL = os.environ.get("PUBLIC_SUBMIT_URL", "")
 AMAP_KEY = os.environ.get("AMAP_KEY", "")
+VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")
 
 SERVICE_TYPES = [
     "开荒保洁",
@@ -135,6 +141,26 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint TEXT UNIQUE NOT NULL,
+            subscription_json TEXT NOT NULL,
+            user_agent TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
     ensure_column(conn, "orders", "deleted_at", "TEXT")
     ensure_column(conn, "orders", "is_new", "INTEGER DEFAULT 0")
     ensure_column(conn, "orders", "updated_at", "TEXT")
@@ -151,6 +177,121 @@ def init_db():
     conn.execute("UPDATE orders SET is_new = 0 WHERE status <> '待联系' AND (is_new IS NULL OR is_new <> 0)")
     conn.commit()
     conn.close()
+
+
+def b64url(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def setting_get(conn, key):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else ""
+
+
+def setting_set(conn, key, value):
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+
+
+def get_vapid_keys():
+    conn = get_db()
+    private_pem = setting_get(conn, "vapid_private_key")
+    public_key = setting_get(conn, "vapid_public_key")
+    if not private_pem or not public_key:
+        vapid = Vapid()
+        vapid.generate_keys()
+        private_pem = vapid.private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode("utf-8")
+        public_bytes = vapid.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        )
+        public_key = b64url(public_bytes)
+        setting_set(conn, "vapid_private_key", private_pem)
+        setting_set(conn, "vapid_public_key", public_key)
+        conn.commit()
+    conn.close()
+    return private_pem, public_key
+
+
+def save_push_subscription(subscription, user_agent=""):
+    endpoint = subscription.get("endpoint") if isinstance(subscription, dict) else ""
+    keys = subscription.get("keys") if isinstance(subscription, dict) else {}
+    if not endpoint or not keys or not keys.get("p256dh") or not keys.get("auth"):
+        return False
+    current_time = now_text()
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO push_subscriptions (endpoint, subscription_json, user_agent, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(endpoint) DO UPDATE SET
+            subscription_json = excluded.subscription_json,
+            user_agent = excluded.user_agent,
+            updated_at = excluded.updated_at
+        """,
+        (endpoint, json.dumps(subscription), clean_text(user_agent, 500), current_time, current_time),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_push_subscription(endpoint):
+    if not endpoint:
+        return
+    conn = get_db()
+    conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+    conn.commit()
+    conn.close()
+
+
+def push_payload_for_order(order):
+    return {
+        "title": "北京东科保洁有新订单",
+        "body": "｜".join([order.get("customer_name") or "新客户", order.get("service_type") or "预约服务", order.get("phone") or ""]),
+        "url": url_for("admin", status="待联系", _external=False),
+        "tag": f"dongke-order-{order.get('id')}",
+        "badgeCount": get_order_counts()["待联系"],
+    }
+
+
+def send_push_notifications(order):
+    private_key, _public_key = get_vapid_keys()
+    payload = json.dumps(push_payload_for_order(order), ensure_ascii=False)
+    conn = get_db()
+    rows = conn.execute("SELECT endpoint, subscription_json FROM push_subscriptions").fetchall()
+    stale = []
+    sent = 0
+    for row in rows:
+        subscription = json.loads(row["subscription_json"])
+        try:
+            webpush(
+                subscription_info=subscription,
+                data=payload,
+                vapid_private_key=private_key,
+                vapid_claims={"sub": VAPID_SUBJECT},
+                ttl=3600,
+                timeout=8,
+            )
+            sent += 1
+        except WebPushException as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code in (404, 410):
+                stale.append(row["endpoint"])
+        except Exception:
+            continue
+    for endpoint in stale:
+        conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+    if stale:
+        conn.commit()
+    conn.close()
+    return sent
 
 
 def ensure_column(conn, table, column, definition):
@@ -661,7 +802,7 @@ def submit():
                 flash(error, "error")
             return render_template("submit.html", form_data=data, public_page=True), 400
         conn = get_db()
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO orders (
                 order_no, created_at, updated_at, is_new, customer_name, phone, address, service_type,
@@ -687,7 +828,13 @@ def submit():
             ),
         )
         conn.commit()
+        created = conn.execute("SELECT * FROM orders WHERE id = ?", (cursor.lastrowid,)).fetchone()
         conn.close()
+        if created:
+            try:
+                send_push_notifications(order_summary(normalize_order_row(created)))
+            except Exception:
+                pass
         return redirect(url_for("submit_success"))
     return render_template("submit.html", form_data={}, public_page=True)
 
@@ -827,6 +974,47 @@ def api_orders():
         "summary": summarize_orders(orders),
     })
     return jsonify(payload)
+
+
+@app.route("/api/push-public-key")
+def api_push_public_key():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    _private_key, public_key = get_vapid_keys()
+    return jsonify({"publicKey": public_key})
+
+
+@app.route("/api/push-subscribe", methods=["POST"])
+def api_push_subscribe():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    subscription = request.get_json(silent=True) or {}
+    if not save_push_subscription(subscription, request.headers.get("User-Agent", "")):
+        return jsonify({"ok": False, "error": "订阅信息无效"}), 400
+    return jsonify({"ok": True, "message": "手机消息推送已开启"})
+
+
+@app.route("/api/push-unsubscribe", methods=["POST"])
+def api_push_unsubscribe():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    delete_push_subscription(payload.get("endpoint", ""))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/push-test", methods=["POST"])
+def api_push_test():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    test_order = {
+        "id": "test",
+        "customer_name": "测试客户",
+        "service_type": "开荒保洁",
+        "phone": "13800000000",
+    }
+    sent = send_push_notifications(test_order)
+    return jsonify({"ok": True, "sent": sent})
 
 
 @app.route("/orders/<int:order_id>/update", methods=["POST"])

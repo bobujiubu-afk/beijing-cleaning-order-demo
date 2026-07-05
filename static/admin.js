@@ -190,6 +190,97 @@
     });
   }
 
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var rawData = window.atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; i += 1) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  function ensureServiceWorkerReady() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return Promise.reject(new Error("push unsupported"));
+    }
+    return navigator.serviceWorker.ready;
+  }
+
+  function enablePushNotifications() {
+    if (!("Notification" in window)) {
+      setStatus("当前手机浏览器不支持系统推送通知。请用 Safari/Chrome 并从桌面图标打开。", true);
+      return;
+    }
+
+    Notification.requestPermission()
+      .then(function (permission) {
+        notificationEnabled = permission === "granted";
+        localStorage.setItem("dongkeNotificationEnabled", notificationEnabled ? "1" : "0");
+        if (!notificationEnabled) throw new Error("notification denied");
+        return Promise.all([
+          ensureServiceWorkerReady(),
+          fetch("/api/push-public-key", { cache: "no-store" }).then(function (response) {
+            if (!response.ok) throw new Error("public key failed");
+            return response.json();
+          })
+        ]);
+      })
+      .then(function (results) {
+        var registration = results[0];
+        var publicKey = results[1].publicKey;
+        return registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+      })
+      .then(function (subscription) {
+        return fetch("/api/push-subscribe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify(subscription),
+          cache: "no-store"
+        });
+      })
+      .then(function (response) {
+        if (!response.ok) throw new Error("subscribe failed");
+        setStatus("手机消息推送已开启。以后有新订单会直接发系统通知。", false);
+      })
+      .catch(function (error) {
+        if (String(error.message || error) === "notification denied") {
+          setStatus("你没有允许通知权限，手机系统不会弹新订单消息。", true);
+        } else {
+          setStatus("当前手机没有成功开启推送。请确认是从桌面图标/Safari/Chrome 打开，并允许通知。", true);
+        }
+      });
+  }
+
+  function sendServerTestPush() {
+    return fetch("/api/push-test", {
+      method: "POST",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      cache: "no-store"
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error("test push failed");
+        return response.json();
+      })
+      .then(function (data) {
+        if (data.sent > 0) {
+          setStatus("已发送服务器测试推送，请看手机系统通知栏。", false);
+        } else {
+          setStatus("还没有可用的手机推送订阅，请先点“开启手机消息推送”。", true);
+        }
+      })
+      .catch(function () {
+        setStatus("服务器测试推送失败，请重新开启手机消息推送。", true);
+      });
+  }
+
   function showNewOrderNotification(order) {
     if (!notificationEnabled || !("Notification" in window) || Notification.permission !== "granted" || !order) {
       return;
@@ -236,6 +327,7 @@
     startTitleFlash();
     playNewOrderSound(true);
     showNewOrderNotification(testOrder);
+    sendServerTestPush();
     setStatus("已触发测试提醒：应出现提示音、震动、标题闪烁和通知。", false);
   }
 
@@ -521,7 +613,7 @@
       if (!("Notification" in window)) {
         notificationButton.hidden = true;
       } else {
-        notificationButton.addEventListener("click", requestNotificationPermission);
+        notificationButton.addEventListener("click", enablePushNotifications);
         if (notificationEnabled && Notification.permission !== "granted") {
           localStorage.setItem("dongkeNotificationEnabled", "0");
           notificationEnabled = false;
