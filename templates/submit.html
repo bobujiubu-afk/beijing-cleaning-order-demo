@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">专业保洁 · 开荒保洁 · 地毯清洗 · 石材结晶</p>
     <h1>客户预约登记</h1>
-    <p>请填写您的服务需求，我们会尽快联系您确认时间和报价。</p>
+    <p>请填写您的服务需求，我们会尽快联系您确认服务安排。</p>
   </div>
 </section>
 
@@ -40,8 +40,16 @@
       <input name="area" maxlength="40" value="{{ form_data.area or '' }}" placeholder="例如：120㎡ / 办公室500㎡">
     </label>
     <label>
-      期望上门时间
-      <input name="preferred_time" maxlength="80" value="{{ form_data.preferred_time or '' }}" placeholder="例如：本周六上午">
+      预约日期
+      <input name="appointment_date" type="date" required value="{{ form_data.appointment_date or '' }}">
+    </label>
+    <label>
+      预约时间段
+      <select name="appointment_period" required>
+        {% for item in appointment_periods %}
+        <option value="{{ item }}" {% if form_data.appointment_period == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
     </label>
     <label>
       是否需要开票

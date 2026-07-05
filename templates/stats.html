@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">本月经营看板</p>
     <h1>数据统计</h1>
-    <p>一眼看清订单数量、成交情况、服务类型和客户来源。</p>
+    <p>一眼看清订单数量、订单金额、服务类型和客户来源。</p>
   </div>
   <a class="primary-button" href="{{ url_for('admin') }}">查看订单</a>
 </section>
@@ -18,10 +18,30 @@
   <div class="metric"><span>已取消</span><strong>{{ data.canceled }}</strong></div>
   <div class="metric highlight"><span>本月订单</span><strong>{{ data.month_total }}</strong></div>
   <div class="metric highlight"><span>本月成交</span><strong>{{ data.month_dealed }}</strong></div>
-  <div class="metric highlight"><span>本月成交金额</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
+  <div class="metric highlight"><span>本月订单金额</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
+</section>
+
+<section class="panel data-tools">
+  <h2>数据工具</h2>
+  <p class="path-note">导出和备份统一放在这里。手机如果无法直接下载，请使用电脑端导出。</p>
+  <div class="tool-actions">
+    <a class="primary-button" href="{{ url_for('export_excel') }}">导出 Excel</a>
+    <a class="ghost-button secondary-action" href="{{ url_for('backup_database') }}">数据备份</a>
+    <a class="ghost-button" href="{{ url_for('export_list') }}">导出记录</a>
+  </div>
 </section>
 
 <section class="chart-grid">
+  <div class="panel">
+    <h2>预约日期统计</h2>
+    {% for item in date_counts %}
+    <div class="bar-row">
+      <span>{{ item.appointment_date }}</span>
+      <div class="bar"><i style="width: {{ (item.count / data.total * 100) if data.total else 0 }}%"></i></div>
+      <strong>{{ item.count }}</strong>
+    </div>
+    {% endfor %}
+  </div>
   <div class="panel">
     <h2>各服务类型订单数量</h2>
     {% for item in service_counts %}

@@ -47,6 +47,7 @@ SOURCES = [
     "其他",
 ]
 
+APPOINTMENT_PERIODS = ["上午", "下午", "晚上", "具体时间电话沟通"]
 ORDER_STATUSES = ["待联系", "已联系", "已成交", "已取消"]
 LEGACY_STATUS_MAP = {"已报价": "已联系", "已完成": "已成交"}
 STATUS_ORDER_SQL = """
@@ -117,9 +118,12 @@ def init_db():
             service_type TEXT NOT NULL,
             area TEXT,
             preferred_time TEXT,
+            appointment_date TEXT,
+            appointment_period TEXT,
             need_invoice TEXT DEFAULT '否',
             source TEXT,
             status TEXT DEFAULT '待联系',
+            amount REAL,
             quote_amount REAL DEFAULT 0,
             deal_amount REAL DEFAULT 0,
             owner TEXT,
@@ -134,9 +138,15 @@ def init_db():
     ensure_column(conn, "orders", "deleted_at", "TEXT")
     ensure_column(conn, "orders", "is_new", "INTEGER DEFAULT 0")
     ensure_column(conn, "orders", "updated_at", "TEXT")
+    ensure_column(conn, "orders", "appointment_date", "TEXT")
+    ensure_column(conn, "orders", "appointment_period", "TEXT")
+    ensure_column(conn, "orders", "amount", "REAL")
     conn.execute("UPDATE orders SET status = '已联系' WHERE status = '已报价'")
     conn.execute("UPDATE orders SET status = '已成交' WHERE status = '已完成'")
     conn.execute("UPDATE orders SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
+    conn.execute("UPDATE orders SET appointment_period = preferred_time WHERE (appointment_period IS NULL OR appointment_period = '') AND preferred_time IS NOT NULL AND preferred_time <> ''")
+    conn.execute("UPDATE orders SET amount = deal_amount WHERE (amount IS NULL OR amount = 0) AND deal_amount IS NOT NULL AND deal_amount > 0")
+    conn.execute("UPDATE orders SET amount = quote_amount WHERE (amount IS NULL OR amount = 0) AND quote_amount IS NOT NULL AND quote_amount > 0")
     conn.execute("UPDATE orders SET is_new = 1 WHERE status = '待联系'")
     conn.execute("UPDATE orders SET is_new = 0 WHERE status <> '待联系' AND (is_new IS NULL OR is_new <> 0)")
     conn.commit()
@@ -163,6 +173,11 @@ def normalize_order_row(row):
     order["status"] = normalize_status(order.get("status"))
     order["is_new"] = 1 if order["status"] == "待联系" or int(order.get("is_new") or 0) else 0
     order["updated_at"] = order.get("updated_at") or order.get("created_at")
+    order["appointment_date"] = order.get("appointment_date") or ""
+    order["appointment_period"] = order.get("appointment_period") or ""
+    order["appointment_label"] = (order["appointment_date"] or "未填写日期") + " " + (order["appointment_period"] or "未填写时间段")
+    order["amount"] = order_amount(order)
+    order["remark"] = order.get("remark") or "无"
     return order
 
 
@@ -197,6 +212,9 @@ def order_summary(order):
         "address": order["address"],
         "status": normalize_status(order["status"]),
         "is_new": int(order["is_new"] or 0),
+        "appointment_date": order.get("appointment_date") or "",
+        "appointment_period": order.get("appointment_period") or "",
+        "amount": order.get("amount") or "",
     }
 
 
@@ -382,10 +400,29 @@ def seed_demo_data(force=False):
 
 def money(value):
     try:
+        if value in (None, ""):
+            return 0
         result = float(value or 0)
         return result if result >= 0 else 0
     except ValueError:
         return 0
+
+
+def amount_or_blank(value):
+    result = money(value)
+    return "" if result == 0 else result
+
+
+def order_amount(order):
+    for field in ("amount", "deal_amount", "quote_amount"):
+        try:
+            value = order[field]
+        except (KeyError, IndexError):
+            value = None
+        result = amount_or_blank(value)
+        if result != "":
+            return result
+    return ""
 
 
 def clean_text(value, max_length=200):
@@ -480,9 +517,11 @@ def validate_submit_form(form):
         "service_type": validate_choice(form.get("service_type"), SERVICE_TYPES, SERVICE_TYPES[0]),
         "area": clean_text(form.get("area"), 40),
         "preferred_time": clean_text(form.get("preferred_time"), 80),
+        "appointment_date": clean_text(form.get("appointment_date"), 20),
+        "appointment_period": validate_choice(form.get("appointment_period"), APPOINTMENT_PERIODS, APPOINTMENT_PERIODS[0]),
         "need_invoice": validate_choice(form.get("need_invoice"), ["是", "否"], "否"),
         "source": validate_choice(form.get("source"), SOURCES, "其他"),
-        "remark": clean_text(form.get("remark"), 500),
+        "remark": clean_text(form.get("remark"), 500) or "无",
     }
     errors = []
     if not data["customer_name"]:
@@ -493,6 +532,8 @@ def validate_submit_form(form):
         errors.append("联系电话看起来太短，请检查。")
     if not data["address"]:
         errors.append("请填写服务地址。")
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", data["appointment_date"]):
+        errors.append("请选择预约日期。")
     return data, errors
 
 
@@ -514,10 +555,18 @@ def get_orders(filters=None):
         sql += " AND (customer_name LIKE ? OR phone LIKE ? OR address LIKE ?)"
         keyword = f"%{filters['keyword']}%"
         params.extend([keyword, keyword, keyword])
+    if filters.get("date_from"):
+        sql += " AND appointment_date >= ?"
+        params.append(filters["date_from"])
+    if filters.get("date_to"):
+        sql += " AND appointment_date <= ?"
+        params.append(filters["date_to"])
 
     sql += f"""
         ORDER BY
             {STATUS_ORDER_SQL} ASC,
+            CASE WHEN appointment_date IS NULL OR appointment_date = '' THEN 1 ELSE 0 END ASC,
+            appointment_date ASC,
             CASE WHEN status = '待联系' THEN 1 ELSE COALESCE(is_new, 0) END DESC,
             COALESCE(NULLIF(updated_at, ''), created_at) DESC,
             created_at DESC,
@@ -527,6 +576,39 @@ def get_orders(filters=None):
     orders = conn.execute(sql, params).fetchall()
     conn.close()
     return [normalize_order_row(order) for order in orders]
+
+
+def date_filter_bounds(scope, custom_date=""):
+    today = datetime.now().date()
+    if scope == "today":
+        value = today.strftime("%Y-%m-%d")
+        return value, value
+    if scope == "tomorrow":
+        value = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+        return value, value
+    if scope == "week":
+        start = today.strftime("%Y-%m-%d")
+        end = (today + timedelta(days=6)).strftime("%Y-%m-%d")
+        return start, end
+    if scope == "custom" and re.match(r"^\d{4}-\d{2}-\d{2}$", custom_date or ""):
+        return custom_date, custom_date
+    return "", ""
+
+
+def request_filters():
+    date_scope = request.args.get("date_scope", "all").strip() or "all"
+    custom_date = request.args.get("custom_date", "").strip()
+    date_from, date_to = date_filter_bounds(date_scope, custom_date)
+    return {
+        "status": normalize_status(request.args.get("status", "").strip()) if request.args.get("status", "").strip() else "",
+        "service_type": request.args.get("service_type", "").strip(),
+        "source": request.args.get("source", "").strip(),
+        "keyword": request.args.get("keyword", "").strip(),
+        "date_scope": date_scope,
+        "custom_date": custom_date,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
 
 
 def summarize_orders(orders):
@@ -541,7 +623,7 @@ def summarize_orders(orders):
         source = order["source"] or "未填写"
         source_counts[source] = source_counts.get(source, 0) + 1
         if status == "已成交":
-            total_amount += money(order["deal_amount"])
+            total_amount += money(order["amount"])
     return {
         "total": len(orders),
         "waiting": status_counts["待联系"],
@@ -559,6 +641,7 @@ def inject_options():
     return {
         "service_types": SERVICE_TYPES,
         "sources": SOURCES,
+        "appointment_periods": APPOINTMENT_PERIODS,
         "order_statuses": ORDER_STATUSES,
         "follow_up_statuses": FOLLOW_UP_STATUSES,
     }
@@ -582,9 +665,9 @@ def submit():
             """
             INSERT INTO orders (
                 order_no, created_at, updated_at, is_new, customer_name, phone, address, service_type,
-                area, preferred_time, need_invoice, source, status, quote_amount,
+                area, preferred_time, appointment_date, appointment_period, need_invoice, source, status, amount, quote_amount,
                 deal_amount, owner, follow_up_status, remark
-            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '待联系', 0, 0, '', '未回访', ?)
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待联系', NULL, 0, 0, '', '未回访', ?)
             """,
             (
                 make_order_no(),
@@ -595,7 +678,9 @@ def submit():
                 data["address"],
                 data["service_type"],
                 data["area"],
-                data["preferred_time"],
+                data["appointment_date"] + " " + data["appointment_period"],
+                data["appointment_date"],
+                data["appointment_period"],
                 data["need_invoice"],
                 data["source"],
                 data["remark"],
@@ -704,12 +789,7 @@ def logout():
 def admin():
     if not require_admin():
         return render_template("login.html")
-    filters = {
-        "status": normalize_status(request.args.get("status", "").strip()) if request.args.get("status", "").strip() else "",
-        "service_type": request.args.get("service_type", "").strip(),
-        "source": request.args.get("source", "").strip(),
-        "keyword": request.args.get("keyword", "").strip(),
-    }
+    filters = request_filters()
     orders = get_orders(filters)
     counts = get_order_counts()
     filtered_summary = summarize_orders(orders)
@@ -737,12 +817,7 @@ def api_order_counts():
 def api_orders():
     if not require_admin():
         return jsonify({"error": "unauthorized"}), 401
-    filters = {
-        "status": normalize_status(request.args.get("status", "").strip()) if request.args.get("status", "").strip() else "",
-        "service_type": request.args.get("service_type", "").strip(),
-        "source": request.args.get("source", "").strip(),
-        "keyword": request.args.get("keyword", "").strip(),
-    }
+    filters = request_filters()
     orders = get_orders(filters)
     payload = order_count_payload()
     latest_updated_at = max((order["updated_at"] or order["created_at"] for order in orders), default="")
@@ -758,31 +833,53 @@ def api_orders():
 def update_order(order_id):
     if not require_admin():
         return redirect(url_for("login"))
-    status = validate_choice(request.form.get("status"), ORDER_STATUSES, "待联系")
-    follow_up_status = validate_choice(request.form.get("follow_up_status"), FOLLOW_UP_STATUSES, "未回访")
-    is_new = 1 if status == "待联系" else 0
+    payload = request.get_json(silent=True) if request.is_json else None
+    source = payload if payload is not None else request.form
+    fields = []
+    values = []
+
+    if "status" in source:
+        status = validate_choice(source.get("status"), ORDER_STATUSES, "待联系")
+        fields.extend(["status = ?", "is_new = ?"])
+        values.extend([status, 1 if status == "待联系" else 0])
+    if "amount" in source:
+        amount_value = source.get("amount")
+        fields.append("amount = ?")
+        values.append(None if amount_value in (None, "") else money(amount_value))
+    if "quote_amount" in source or "deal_amount" in source:
+        legacy_amount = source.get("deal_amount") or source.get("quote_amount")
+        fields.append("amount = ?")
+        values.append(None if legacy_amount in (None, "") else money(legacy_amount))
+    if "appointment_date" in source:
+        fields.append("appointment_date = ?")
+        values.append(clean_text(source.get("appointment_date"), 20))
+    if "appointment_period" in source:
+        fields.append("appointment_period = ?")
+        values.append(validate_choice(source.get("appointment_period"), APPOINTMENT_PERIODS, APPOINTMENT_PERIODS[0]))
+    if "remark" in source:
+        fields.append("remark = ?")
+        values.append(clean_text(source.get("remark"), 500) or "无")
+
+    if not fields:
+        fields.extend(["status = ?", "amount = ?", "remark = ?"])
+        status = validate_choice(source.get("status"), ORDER_STATUSES, "待联系")
+        values.extend([status, money(source.get("amount")), clean_text(source.get("remark"), 500) or "无"])
+        fields.append("is_new = ?")
+        values.append(1 if status == "待联系" else 0)
+
+    fields.append("updated_at = ?")
+    values.append(now_text())
+    values.append(order_id)
     conn = get_db()
     conn.execute(
-        """
-        UPDATE orders
-        SET status = ?, quote_amount = ?, deal_amount = ?, owner = ?,
-            follow_up_status = ?, remark = ?, is_new = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (
-            status,
-            money(request.form.get("quote_amount")),
-            money(request.form.get("deal_amount")),
-            clean_text(request.form.get("owner"), 40),
-            follow_up_status,
-            clean_text(request.form.get("remark"), 500),
-            is_new,
-            now_text(),
-            order_id,
-        ),
+        f"UPDATE orders SET {', '.join(fields)} WHERE id = ?",
+        values,
     )
     conn.commit()
+    updated = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
     conn.close()
+    if request.is_json:
+        return jsonify({"ok": True, "order": order_summary(normalize_order_row(updated))})
     flash("订单已保存。", "success")
     return redirect(request.referrer or url_for("admin"))
 
@@ -812,6 +909,15 @@ def stats():
     source_counts = conn.execute(
         "SELECT source, COUNT(*) AS count FROM orders WHERE deleted_at IS NULL GROUP BY source ORDER BY count DESC"
     ).fetchall()
+    date_counts = conn.execute(
+        """
+        SELECT COALESCE(NULLIF(appointment_date, ''), '未填写日期') AS appointment_date, COUNT(*) AS count
+        FROM orders
+        WHERE deleted_at IS NULL
+        GROUP BY COALESCE(NULLIF(appointment_date, ''), '未填写日期')
+        ORDER BY appointment_date ASC
+        """
+    ).fetchall()
     conn.close()
 
     month_prefix = datetime.now().strftime("%Y-%m")
@@ -828,21 +934,16 @@ def stats():
         "canceled": status_counts["已取消"],
         "month_total": len(current_month),
         "month_dealed": len(month_deals),
-        "month_amount": sum(money(order["deal_amount"]) for order in month_deals),
+        "month_amount": sum(money(order["amount"]) for order in current_month),
     }
-    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts, page_label="数据统计")
+    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts, date_counts=date_counts, page_label="数据统计")
 
 
 @app.route("/export")
 def export_excel():
     if not require_admin():
         return redirect(url_for("login"))
-    filters = {
-        "status": request.args.get("status", "").strip(),
-        "service_type": request.args.get("service_type", "").strip(),
-        "source": request.args.get("source", "").strip(),
-        "keyword": request.args.get("keyword", "").strip(),
-    }
+    filters = request_filters()
     orders = get_orders(filters)
     wb = Workbook()
     ws = wb.active
@@ -850,19 +951,16 @@ def export_excel():
     headers = [
         "订单编号",
         "提交时间",
+        "预约日期",
+        "预约时间段",
         "客户姓名",
         "联系电话",
         "服务地址",
         "服务类型",
         "房屋面积",
-        "期望上门时间",
-        "是否需要开票",
-        "客户来源",
         "订单状态",
-        "报价金额",
-        "成交金额",
-        "负责人",
-        "回访状态",
+        "订单金额",
+        "客户来源",
         "备注",
     ]
     ws.append(headers)
@@ -870,19 +968,16 @@ def export_excel():
         ws.append([
             order["order_no"],
             order["created_at"],
+            order["appointment_date"] or "未填写日期",
+            order["appointment_period"] or "未填写时间段",
             order["customer_name"],
             order["phone"],
             order["address"],
             order["service_type"],
             order["area"],
-            order["preferred_time"],
-            order["need_invoice"],
-            order["source"],
             normalize_status(order["status"]),
-            order["quote_amount"],
-            order["deal_amount"],
-            order["owner"],
-            order["follow_up_status"],
+            order["amount"],
+            order["source"],
             order["remark"],
         ])
 
@@ -937,12 +1032,7 @@ def export_result(filename):
         "size_kb": max(1, round(os.path.getsize(path) / 1024)),
         "mtime": datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M"),
     }]
-    filters = {
-        "status": request.args.get("status", "").strip(),
-        "service_type": request.args.get("service_type", "").strip(),
-        "source": request.args.get("source", "").strip(),
-        "keyword": request.args.get("keyword", "").strip(),
-    }
+    filters = request_filters()
     orders = get_orders(filters)
     return render_template(
         "exports.html",

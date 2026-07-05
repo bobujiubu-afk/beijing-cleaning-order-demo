@@ -1,3 +1,64 @@
+<div class="desktop-order-table">
+  <table class="admin-order-table">
+    <thead>
+      <tr>
+        <th>新</th>
+        <th>预约日期</th>
+        <th>时间段</th>
+        <th>客户</th>
+        <th>电话</th>
+        <th>服务</th>
+        <th>地址</th>
+        <th>状态</th>
+        <th>订单金额</th>
+        <th>来源</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr class="{% if order.is_new or order.status == '待联系' %}order-row-new{% endif %}">
+        <td>{% if order.is_new or order.status == '待联系' %}<span class="red-dot" aria-label="新订单"></span>{% endif %}</td>
+        <td>{{ order.appointment_date or "未填写日期" }}</td>
+        <td>{{ order.appointment_period or "未填写时间段" }}</td>
+        <td><strong>{{ order.customer_name }}</strong></td>
+        <td><a class="phone-link compact-phone" href="tel:{{ order.phone }}">{{ order.phone }}</a></td>
+        <td>{{ order.service_type }}</td>
+        <td class="address-cell" title="{{ order.address }}">{{ order.address }}</td>
+        <td>
+          <select class="quick-save status-select" data-order-id="{{ order.id }}" data-field="status">
+            {% for item in order_statuses %}
+            <option value="{{ item }}" {% if order.status == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <div class="amount-edit">
+            <input class="quick-amount" data-order-id="{{ order.id }}" data-field="amount" type="number" step="0.01" value="{{ order.amount }}">
+            <button class="tiny-save" type="button" data-order-id="{{ order.id }}">保存</button>
+          </div>
+        </td>
+        <td>{{ order.source or "未填" }}</td>
+        <td>
+          <details class="compact-detail">
+            <summary>详情</summary>
+            <div class="compact-detail-body">
+              <p>面积：{{ order.area or "未填" }}</p>
+              <p>开票：{{ order.need_invoice }}</p>
+              <p>备注：{{ order.remark[:20] }}{% if order.remark|length > 20 %}...{% endif %}</p>
+              <p>提交：{{ order.created_at }}</p>
+              <p>更新：{{ order.updated_at or order.created_at }}</p>
+              <p>编号：{{ order.order_no }}</p>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="mobile-order-cards">
 {% for order in orders %}
 <article class="order-card {% if order.is_new or order.status == '待联系' %}order-card-new{% endif %}">
   <div class="order-main">
@@ -10,74 +71,50 @@
         {% if order.is_new or order.status == '待联系' %}
         <span class="new-badge">新</span>
         {% endif %}
-        <span class="status status-{{ order.status }}">{{ order.status }}</span>
       </div>
       <a class="phone-link" href="tel:{{ order.phone }}">{{ order.phone }}</a>
-      <p class="order-brief">{{ order.service_type }} · {{ order.area or "未填面积" }}</p>
+      <p class="appointment-line">预约：{{ order.appointment_date or "未填写日期" }} {{ order.appointment_period or "未填写时间段" }}</p>
+      <p class="order-brief">{{ order.service_type }} · {{ order.source or "未填来源" }}</p>
       <p class="order-address">{{ order.address }}</p>
-    </div>
-    <div class="order-meta">
-      <span>{{ order.order_no }}</span>
-      <span>提交：{{ order.created_at }}</span>
-      <span>更新：{{ order.updated_at or order.created_at }}</span>
-      <span>来源：{{ order.source or "未填" }}</span>
+      <div class="mobile-inline-edit">
+        <label>
+          状态
+          <select class="quick-save status-select" data-order-id="{{ order.id }}" data-field="status">
+            {% for item in order_statuses %}
+            <option value="{{ item }}" {% if order.status == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          订单金额
+          <div class="amount-edit">
+            <input class="quick-amount" data-order-id="{{ order.id }}" data-field="amount" type="number" step="0.01" value="{{ order.amount }}">
+            <button class="tiny-save" type="button" data-order-id="{{ order.id }}">保存</button>
+          </div>
+        </label>
+      </div>
     </div>
   </div>
 
   <details class="order-detail">
-    <summary>查看和修改订单</summary>
+    <summary>展开详情</summary>
     <div class="detail-grid">
-      <div><span>期望上门</span><strong>{{ order.preferred_time or "未填" }}</strong></div>
+      <div><span>房屋面积</span><strong>{{ order.area or "未填" }}</strong></div>
       <div><span>是否开票</span><strong>{{ order.need_invoice }}</strong></div>
-      <div><span>报价金额</span><strong>¥{{ "%.0f"|format(order.quote_amount or 0) }}</strong></div>
-      <div><span>成交金额</span><strong>¥{{ "%.0f"|format(order.deal_amount or 0) }}</strong></div>
-      <div><span>负责人</span><strong>{{ order.owner or "未分配" }}</strong></div>
-      <div><span>回访状态</span><strong>{{ order.follow_up_status }}</strong></div>
+      <div><span>提交时间</span><strong>{{ order.created_at }}</strong></div>
+      <div><span>更新时间</span><strong>{{ order.updated_at or order.created_at }}</strong></div>
+      <div class="wide"><span>订单编号</span><strong>{{ order.order_no }}</strong></div>
+      <div class="wide"><span>备注</span><strong>{{ order.remark or "无" }}</strong></div>
     </div>
-
-    <form class="edit-grid" method="post" action="{{ url_for('update_order', order_id=order.id) }}">
-      <label>
-        订单状态
-        <select name="status">
-          {% for item in order_statuses %}
-          <option value="{{ item }}" {% if order.status == item %}selected{% endif %}>{{ item }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        报价金额
-        <input name="quote_amount" type="number" step="0.01" value="{{ order.quote_amount or 0 }}">
-      </label>
-      <label>
-        成交金额
-        <input name="deal_amount" type="number" step="0.01" value="{{ order.deal_amount or 0 }}">
-      </label>
-      <label>
-        负责人
-        <input name="owner" value="{{ order.owner or '' }}" placeholder="例如：王师傅">
-      </label>
-      <label>
-        回访状态
-        <select name="follow_up_status">
-          {% for item in follow_up_statuses %}
-          <option value="{{ item }}" {% if order.follow_up_status == item %}selected{% endif %}>{{ item }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="wide">
-        备注
-        <textarea name="remark" rows="3">{{ order.remark or "" }}</textarea>
-      </label>
-      <div class="wide form-actions">
-        <button class="primary-button" type="submit">保存修改</button>
-      </div>
-    </form>
 
     <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" onsubmit="return confirm('确定把这条订单移入删除记录吗？数据会保留在数据库里。');">
       <button class="danger-button" type="submit">移入删除记录</button>
     </form>
   </details>
 </article>
-{% else %}
-<div class="empty">暂无订单，可以先到客户预约页提交一条。</div>
 {% endfor %}
+</div>
+
+{% if not orders %}
+<div class="empty">暂无订单，可以先到客户预约页提交一条。</div>
+{% endif %}

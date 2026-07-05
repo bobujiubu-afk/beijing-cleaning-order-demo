@@ -11,6 +11,7 @@
   var notificationEnabled = localStorage.getItem("dongkeNotificationEnabled") === "1";
   var audioContext = null;
   var defaultIconHref = null;
+  var soundFile = "/static/sounds/new-order.wav";
 
   function qs(selector) {
     return document.querySelector(selector);
@@ -70,26 +71,35 @@
       return;
     }
 
-    var oscillator = context.createOscillator();
-    var gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(880, context.currentTime);
-    oscillator.frequency.setValueAtTime(1180, context.currentTime + 0.16);
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.45);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.48);
+    [0, 0.42, 0.86].forEach(function (offset, index) {
+      var start = context.currentTime + offset;
+      var oscillator = context.createOscillator();
+      var gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(index === 1 ? 1040 : 880, start);
+      oscillator.frequency.exponentialRampToValueAtTime(index === 1 ? 1320 : 1180, start + 0.16);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.28, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.36);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.38);
+    });
+  }
+
+  function vibrateReminder() {
+    if ("vibrate" in navigator) {
+      navigator.vibrate([260, 120, 260, 120, 420]);
+    }
   }
 
   function playSingleNewOrderSound() {
-    var audio = new Audio("/static/sounds/new-order.mp3");
+    var audio = new Audio(soundFile);
     audio.preload = "auto";
     audio.volume = 0.9;
 
-    audio.play().catch(function () {
+    return audio.play().catch(function () {
       try {
         beepFallback();
       } catch (error) {
@@ -109,25 +119,20 @@
     lastSoundAt = now;
 
     if (soundBurstTimer) window.clearInterval(soundBurstTimer);
-    var count = 0;
+    soundBurstTimer = null;
+    ensureAudioContext();
+    vibrateReminder();
     playSingleNewOrderSound();
-    soundBurstTimer = window.setInterval(function () {
-      count += 1;
-      if (count >= 2) {
-        window.clearInterval(soundBurstTimer);
-        soundBurstTimer = null;
-        return;
-      }
-      playSingleNewOrderSound();
-    }, 900);
   }
 
   function enableSoundAlert() {
     soundEnabled = true;
     localStorage.setItem("dongkeSoundEnabled", "1");
     try {
-      beepFallback();
-      setStatus("声音提醒已开启。", false);
+      ensureAudioContext();
+      vibrateReminder();
+      playSingleNewOrderSound();
+      setStatus("声音提醒已开启，已播放测试铃声。", false);
     } catch (error) {
       setStatus("浏览器限制自动播放，请再点一次“开启声音提醒”。", true);
     }
@@ -179,6 +184,20 @@
     }
 
     showPageNotification(body, order);
+  }
+
+  function testReminder() {
+    var testOrder = {
+      id: "test-" + Date.now(),
+      customer_name: "测试客户",
+      service_type: "开荒保洁",
+      phone: "13800000000"
+    };
+    showMessageAlert({ pending_count: Number(qs("#waitingCount") ? qs("#waitingCount").textContent : 1) || 1 });
+    startTitleFlash();
+    playNewOrderSound();
+    showNewOrderNotification(testOrder);
+    setStatus("已触发测试提醒：应出现提示音、震动、标题闪烁和通知。", false);
   }
 
   function showPageNotification(body, order) {
@@ -341,6 +360,34 @@
     if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function saveOrderField(orderId, payload) {
+    return fetch("/orders/" + orderId + "/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error("save failed");
+        return response.json();
+      })
+      .then(function () {
+        setStatus("已保存。", false);
+        refreshOrders();
+      })
+      .catch(function () {
+        setStatus("保存失败，请稍后重试。", true);
+      });
+  }
+
+  function saveAmountInput(input) {
+    if (!input || !input.dataset.orderId) return;
+    saveOrderField(input.dataset.orderId, { amount: input.value });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     document.title = normalTitle;
     ensureFavicon();
@@ -353,6 +400,19 @@
         var open = filters.classList.toggle("filters-open");
         filterButton.setAttribute("aria-expanded", open ? "true" : "false");
       });
+    }
+
+    if (filters) {
+      var customDate = filters.querySelector("input[name='custom_date']");
+      var dateScope = filters.querySelector("input[name='date_scope']");
+      if (customDate && dateScope) {
+        customDate.addEventListener("change", function () {
+          if (customDate.value) {
+            dateScope.value = "custom";
+            filters.submit();
+          }
+        });
+      }
     }
 
     var settingsButton = qs("#reminderSettingsButton");
@@ -369,6 +429,9 @@
       soundButton.addEventListener("click", enableSoundAlert);
       if (soundEnabled) setStatus("声音提醒已开启，如不响请再点一次按钮。", false);
     }
+
+    var testButton = qs("#testReminderButton");
+    if (testButton) testButton.addEventListener("click", testReminder);
 
     var notificationButton = qs("#enableNotificationButton");
     if (notificationButton) {
@@ -394,6 +457,27 @@
     var viewButton = qs("#viewPendingButton");
     if (viewButton) viewButton.addEventListener("click", viewPendingOrders);
 
+    document.addEventListener("change", function (event) {
+      var target = event.target;
+      if (target.classList.contains("status-select") && target.dataset.orderId) {
+        saveOrderField(target.dataset.orderId, { status: target.value });
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest(".tiny-save");
+      if (!button) return;
+      var wrapper = button.closest(".amount-edit");
+      var input = wrapper ? wrapper.querySelector(".quick-amount") : document.querySelector(".quick-amount[data-order-id='" + button.dataset.orderId + "']");
+      saveAmountInput(input);
+    });
+
+    document.addEventListener("blur", function (event) {
+      if (event.target.classList && event.target.classList.contains("quick-amount")) {
+        saveAmountInput(event.target);
+      }
+    }, true);
+
     if (qs("#orderList")) {
       refreshOrders();
       window.setInterval(refreshOrders, 5000);
@@ -403,5 +487,9 @@
   window.addEventListener("beforeunload", function () {
     if (titleTimer) window.clearInterval(titleTimer);
     if (soundBurstTimer) window.clearInterval(soundBurstTimer);
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && soundEnabled) ensureAudioContext();
   });
 })();

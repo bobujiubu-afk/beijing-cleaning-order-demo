@@ -1,6 +1,7 @@
 from io import BytesIO
 import re
 import sqlite3
+from datetime import date
 
 from openpyxl import load_workbook
 
@@ -32,10 +33,11 @@ def main():
                 "address": f"北京市测试区{index}号",
                 "service_type": "开荒保洁",
                 "area": "88㎡",
-                "preferred_time": "今天下午",
+                "appointment_date": date.today().strftime("%Y-%m-%d"),
+                "appointment_period": "下午",
                 "need_invoice": "否",
                 "source": "微信",
-                "remark": "流程测试",
+                "remark": "",
             },
             follow_redirects=False,
         )
@@ -59,6 +61,8 @@ def main():
     assert api_data["latest_order_id"] > 0
     assert api_data["latest_order"]["customer_name"] == "测试客户自测三"
     assert "测试客户自测三" in api_data["html"]
+    assert "预约日期".encode("utf-8") in login.data
+    assert "订单金额".encode("utf-8") in login.data
     assert api_data["html"].find("测试客户自测三") < api_data["html"].find("测试客户自测二")
     assert "已报价" not in api_data["html"]
     assert "已完成" not in api_data["html"]
@@ -86,16 +90,13 @@ def main():
 
     update = client.post(
         f"/orders/{order_id}/update",
-        data={
+        json={
             "status": "已联系",
-            "quote_amount": "600",
-            "deal_amount": "0",
-            "owner": "老板",
-            "follow_up_status": "已回访",
-            "remark": "已联系测试",
         },
     )
-    assert update.status_code == 302
+    assert update.status_code == 200
+    amount_update = client.post(f"/orders/{order_id}/update", json={"amount": "580"})
+    assert amount_update.status_code == 200
     after_contact = client.get("/api/orders").get_json()
     assert "测试客户自测三" in after_contact["html"]
     contacted_section = after_contact["html"][after_contact["html"].find("测试客户自测三") - 300:after_contact["html"].find("测试客户自测三") + 300]
@@ -103,16 +104,11 @@ def main():
 
     deal = client.post(
         f"/orders/{order_id}/update",
-        data={
+        json={
             "status": "已成交",
-            "quote_amount": "600",
-            "deal_amount": "580",
-            "owner": "老板",
-            "follow_up_status": "已回访",
-            "remark": "已成交测试",
         },
     )
-    assert deal.status_code == 302
+    assert deal.status_code == 200
 
     export = client.get("/export", follow_redirects=True)
     assert export.status_code == 200 and "本次导出的订单明细".encode("utf-8") in export.data
@@ -123,7 +119,15 @@ def main():
     assert excel.status_code == 200
     workbook = load_workbook(BytesIO(excel.data))
     assert workbook.active.max_row >= 2
-    exported_statuses = [cell.value for cell in workbook.active["K"][1:]]
+    headers = [cell.value for cell in workbook.active[1]]
+    assert "预约日期" in headers
+    assert "预约时间段" in headers
+    assert "订单金额" in headers
+    assert "报价金额" not in headers
+    assert "成交金额" not in headers
+    assert "负责人" not in headers
+    assert "回访状态" not in headers
+    exported_statuses = [cell.value for cell in workbook.active["J"][1:]]
     assert "已报价" not in exported_statuses
     assert "已完成" not in exported_statuses
 
