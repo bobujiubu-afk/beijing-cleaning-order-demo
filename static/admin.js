@@ -9,12 +9,9 @@
   var soundBurstTimer = null;
   var soundEnabled = localStorage.getItem("dongkeSoundEnabled") === "1";
   var notificationEnabled = localStorage.getItem("dongkeNotificationEnabled") === "1";
-  var watchModeEnabled = localStorage.getItem("dongkeWatchModeEnabled") === "1" || new URLSearchParams(window.location.search).get("reminder_mode") === "1";
   var audioContext = null;
   var defaultIconHref = null;
   var soundFile = "/static/sounds/new-order.wav";
-  var alarmRepeatTimer = null;
-  var wakeLock = null;
 
   function qs(selector) {
     return document.querySelector(selector);
@@ -141,55 +138,6 @@
     }
   }
 
-  function acquireWakeLock() {
-    if (!("wakeLock" in navigator) || !navigator.wakeLock.request) return;
-    navigator.wakeLock.request("screen")
-      .then(function (lock) {
-        wakeLock = lock;
-        wakeLock.addEventListener("release", function () {
-          wakeLock = null;
-        });
-      })
-      .catch(function () {});
-  }
-
-  function enableWatchMode() {
-    watchModeEnabled = true;
-    localStorage.setItem("dongkeWatchModeEnabled", "1");
-    soundEnabled = true;
-    localStorage.setItem("dongkeSoundEnabled", "1");
-    ensureAudioContext();
-    acquireWakeLock();
-    playSingleNewOrderSound();
-    updateWatchButton();
-    setStatus("手机值守模式已开启：请保持此后台页面打开，来单会全屏提醒并重复响铃。", false);
-  }
-
-  function updateWatchButton() {
-    var button = qs("#watchModeButton");
-    if (!button) return;
-    button.textContent = watchModeEnabled ? "手机值守模式已开启" : "开启手机值守模式";
-    button.classList.toggle("secondary-action", watchModeEnabled);
-  }
-
-  function requestNotificationPermission() {
-    if (!("Notification" in window)) {
-      setStatus("当前浏览器不支持系统通知。", true);
-      var button = qs("#enableNotificationButton");
-      if (button) button.hidden = true;
-      return;
-    }
-
-    Notification.requestPermission().then(function (permission) {
-      notificationEnabled = permission === "granted";
-      localStorage.setItem("dongkeNotificationEnabled", notificationEnabled ? "1" : "0");
-      if (notificationEnabled && "serviceWorker" in navigator) {
-        navigator.serviceWorker.ready.catch(function () {});
-      }
-      setStatus(notificationEnabled ? "手机/系统通知提醒已开启。" : "系统通知未授权。", !notificationEnabled);
-    });
-  }
-
   function urlBase64ToUint8Array(base64String) {
     var padding = "=".repeat((4 - base64String.length % 4) % 4);
     var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -208,9 +156,51 @@
     return navigator.serviceWorker.ready;
   }
 
-  function enablePushNotifications() {
+  function explainPushSupportProblem(error) {
+    var message = String(error && error.message ? error.message : error);
+    if (!window.isSecureContext) {
+      return "当前不是安全网址，手机系统不会允许推送。请使用 https 线上地址。";
+    }
+    if (!("serviceWorker" in navigator)) {
+      return "当前浏览器不支持后台推送，请换 Safari/Chrome，并从桌面图标打开。";
+    }
+    if (!("PushManager" in window)) {
+      return "当前手机浏览器不支持网页后台推送。苹果手机请添加到主屏幕后从桌面图标打开。";
+    }
     if (!("Notification" in window)) {
-      setStatus("当前手机浏览器不支持系统推送通知。请用 Safari/Chrome 并从桌面图标打开。", true);
+      return "当前手机浏览器不支持系统通知。";
+    }
+    if (Notification.permission === "denied") {
+      return "通知权限已被拒绝，请到手机系统设置里允许此网页/应用通知。";
+    }
+    if (message.indexOf("permission") !== -1 || message.indexOf("denied") !== -1) {
+      return "你没有允许通知权限，手机系统不会弹新订单消息。";
+    }
+    if (message.indexOf("unsupported") !== -1) {
+      return "当前浏览器不支持网页后台推送，请换 Safari/Chrome 并从桌面图标打开。";
+    }
+    return "手机推送没有开启成功。请从桌面图标打开后台，允许通知后再试。";
+  }
+
+  function registerSubscription(subscription) {
+    return fetch("/api/push-subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(subscription),
+      cache: "no-store"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("subscribe failed");
+      return subscription;
+    });
+  }
+
+  function enablePushNotifications() {
+    setStatus("正在开启手机消息推送...", false);
+    if (!("Notification" in window)) {
+      setStatus(explainPushSupportProblem(new Error("notification unsupported")), true);
       return;
     }
 
@@ -230,32 +220,30 @@
       .then(function (results) {
         var registration = results[0];
         var publicKey = results[1].publicKey;
-        return registration.pushManager.subscribe({
+        var options = {
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(publicKey)
+        };
+        return registration.pushManager.getSubscription().then(function (existing) {
+          if (existing) return registerSubscription(existing);
+          return registration.pushManager.subscribe(options).then(registerSubscription);
+        }).catch(function () {
+          return registration.pushManager.getSubscription()
+            .then(function (existing) {
+              if (existing) return existing.unsubscribe();
+              return true;
+            })
+            .then(function () {
+              return registration.pushManager.subscribe(options);
+            })
+            .then(registerSubscription);
         });
       })
-      .then(function (subscription) {
-        return fetch("/api/push-subscribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest"
-          },
-          body: JSON.stringify(subscription),
-          cache: "no-store"
-        });
-      })
-      .then(function (response) {
-        if (!response.ok) throw new Error("subscribe failed");
-        setStatus("手机消息推送已开启。以后有新订单会直接发系统通知。", false);
+      .then(function () {
+        setStatus("手机消息推送已开启。新订单会发到手机通知栏；桌面角标是否显示取决于手机系统。", false);
       })
       .catch(function (error) {
-        if (String(error.message || error) === "notification denied") {
-          setStatus("你没有允许通知权限，手机系统不会弹新订单消息。", true);
-        } else {
-          setStatus("当前手机没有成功开启推送。请确认是从桌面图标/Safari/Chrome 打开，并允许通知。", true);
-        }
+        setStatus(explainPushSupportProblem(error), true);
       });
   }
 
@@ -323,12 +311,11 @@
       latest_order: testOrder
     };
     showMessageAlert(data);
-    showWatchOverlay(data);
     startTitleFlash();
     playNewOrderSound(true);
     showNewOrderNotification(testOrder);
     sendServerTestPush();
-    setStatus("已触发测试提醒：应出现提示音、震动、标题闪烁和通知。", false);
+    setStatus("已发送测试：如果已开启手机消息推送，请看手机通知栏。", false);
   }
 
   function showPageNotification(body, order) {
@@ -378,35 +365,9 @@
     return link;
   }
 
-  function drawBadgeIcon(count) {
-    var canvas = document.createElement("canvas");
-    canvas.width = 64;
-    canvas.height = 64;
-    var context = canvas.getContext("2d");
-    context.fillStyle = "#176f5c";
-    context.fillRect(0, 0, 64, 64);
-    context.fillStyle = "#ffffff";
-    context.font = "bold 26px Microsoft YaHei, Arial";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText("东", 32, 34);
-
-    if (count > 0) {
-      context.fillStyle = "#d42121";
-      context.beginPath();
-      context.arc(49, 15, 14, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = "#ffffff";
-      context.font = "bold 15px Arial";
-      context.fillText(count > 9 ? "9+" : String(count), 49, 16);
-    }
-
-    return canvas.toDataURL("image/png");
-  }
-
   function updateFaviconBadge(count) {
     var link = ensureFavicon();
-    link.href = count > 0 ? drawBadgeIcon(count) : defaultIconHref;
+    link.href = defaultIconHref;
   }
 
   function updateAppBadge(count) {
@@ -431,42 +392,8 @@
     if (box) box.classList.add("hidden");
   }
 
-  function showWatchOverlay(data) {
-    var overlay = qs("#watchOverlay");
-    if (!overlay) return;
-    var order = data && data.latest_order ? data.latest_order : {};
-    var text = [order.customer_name || "新客户", order.service_type || "预约服务", order.phone || ""].filter(Boolean).join("｜");
-    setText("#watchOrderText", text || "请尽快联系客户");
-    overlay.classList.remove("hidden");
-    document.body.classList.add("watch-alerting");
-    startRepeatingAlarm();
-  }
-
-  function hideWatchOverlay() {
-    var overlay = qs("#watchOverlay");
-    if (overlay) overlay.classList.add("hidden");
-    document.body.classList.remove("watch-alerting");
-    stopRepeatingAlarm();
-  }
-
-  function startRepeatingAlarm() {
-    if (!watchModeEnabled || alarmRepeatTimer) return;
-    alarmRepeatTimer = window.setInterval(function () {
-      playNewOrderSound(true);
-      vibrateReminder();
-    }, 10000);
-  }
-
-  function stopRepeatingAlarm() {
-    if (alarmRepeatTimer) {
-      window.clearInterval(alarmRepeatTimer);
-      alarmRepeatTimer = null;
-    }
-  }
-
   function handleNewOrder(data) {
     showMessageAlert(data);
-    showWatchOverlay(data);
     startTitleFlash();
     playNewOrderSound(true);
     showNewOrderNotification(data.latest_order);
@@ -598,16 +525,6 @@
     var testButton = qs("#testReminderButton");
     if (testButton) testButton.addEventListener("click", testReminder);
 
-    var watchButton = qs("#watchModeButton");
-    if (watchButton) {
-      watchButton.addEventListener("click", enableWatchMode);
-      updateWatchButton();
-      if (watchModeEnabled) {
-        acquireWakeLock();
-        setStatus("手机值守模式已开启，请保持后台页面打开。", false);
-      }
-    }
-
     var notificationButton = qs("#enableNotificationButton");
     if (notificationButton) {
       if (!("Notification" in window)) {
@@ -625,25 +542,12 @@
     if (dismissButton) {
       dismissButton.addEventListener("click", function () {
         hideMessageAlert();
-        hideWatchOverlay();
         stopTitleFlash();
       });
     }
 
     var viewButton = qs("#viewPendingButton");
     if (viewButton) viewButton.addEventListener("click", viewPendingOrders);
-
-    var watchDismissButton = qs("#watchDismissButton");
-    if (watchDismissButton) {
-      watchDismissButton.addEventListener("click", function () {
-        hideWatchOverlay();
-        hideMessageAlert();
-        stopTitleFlash();
-      });
-    }
-
-    var watchViewButton = qs("#watchViewButton");
-    if (watchViewButton) watchViewButton.addEventListener("click", viewPendingOrders);
 
     document.addEventListener("change", function (event) {
       var target = event.target;
@@ -675,11 +579,9 @@
   window.addEventListener("beforeunload", function () {
     if (titleTimer) window.clearInterval(titleTimer);
     if (soundBurstTimer) window.clearInterval(soundBurstTimer);
-    stopRepeatingAlarm();
   });
 
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && soundEnabled) ensureAudioContext();
-    if (!document.hidden && watchModeEnabled) acquireWakeLock();
   });
 })();

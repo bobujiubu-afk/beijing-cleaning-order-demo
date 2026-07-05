@@ -50,10 +50,11 @@ def main():
     assert "已完成".encode("utf-8") not in login.data
     assert "phone-link".encode("utf-8") in login.data
     assert "new-badge".encode("utf-8") in login.data
-    assert "开启声音提醒".encode("utf-8") in login.data
+    assert "开启页面声音".encode("utf-8") in login.data
     assert "开启手机消息推送".encode("utf-8") in login.data
-    assert "手机值守模式".encode("utf-8") in login.data
-    assert "watchOverlay".encode("utf-8") in login.data
+    assert "手机值守模式".encode("utf-8") not in login.data
+    assert "watchOverlay".encode("utf-8") not in login.data
+    assert "今天".encode("utf-8") in login.data
     assert "有新的客户预约，请尽快联系".encode("utf-8") in login.data
     push_key = client.get("/api/push-public-key")
     assert push_key.status_code == 200 and len(push_key.json["publicKey"]) > 60

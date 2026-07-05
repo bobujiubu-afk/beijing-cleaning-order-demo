@@ -737,7 +737,7 @@ def date_filter_bounds(scope, custom_date=""):
 
 
 def request_filters():
-    date_scope = request.args.get("date_scope", "all").strip() or "all"
+    date_scope = request.args.get("date_scope", "today").strip() or "today"
     custom_date = request.args.get("custom_date", "").strip()
     date_from, date_to = date_filter_bounds(date_scope, custom_date)
     return {

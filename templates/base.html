@@ -27,6 +27,7 @@
       <a href="{{ url_for('appointment_qr') }}">预约二维码</a>
       <a href="{{ url_for('stats') }}">数据统计</a>
       <a href="{{ url_for('export_list') }}">导出记录</a>
+      <button class="nav-icon-button" type="button" id="reminderSettingsButton" aria-expanded="false" title="消息提醒设置">⚙</button>
       <a href="{{ url_for('logout') }}">退出登录</a>
       {% else %}
       <a href="{{ url_for('login') }}">后台登录</a>

@@ -117,6 +117,7 @@ nav {
 }
 
 nav a,
+.nav-icon-button,
 .ghost-button,
 .primary-button,
 .danger-button {
@@ -132,8 +133,15 @@ nav a,
 }
 
 nav a,
+.nav-icon-button,
 .ghost-button {
   background: #fff;
+}
+
+.nav-icon-button {
+  width: 42px;
+  padding: 0;
+  font-size: 18px;
 }
 
 .primary-button {
@@ -483,6 +491,17 @@ textarea {
   display: none;
 }
 
+.reminder-settings-panel {
+  position: fixed;
+  top: 72px;
+  right: max(16px, 5vw);
+  z-index: 20;
+}
+
+.reminder-settings-panel strong {
+  font-size: 16px;
+}
+
 .settings-panel p {
   margin: 0;
   color: var(--muted);
@@ -526,81 +545,6 @@ textarea {
 
 .red-dot.hidden {
   display: none;
-}
-
-.watch-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(23, 33, 31, 0.72);
-  backdrop-filter: blur(8px);
-}
-
-.watch-overlay.hidden {
-  display: none;
-}
-
-.watch-card {
-  width: min(480px, 100%);
-  padding: 28px 22px;
-  color: #fff;
-  text-align: center;
-  background: linear-gradient(145deg, #b81f1f, #e05b2d);
-  border: 2px solid rgba(255, 255, 255, 0.72);
-  border-radius: 12px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
-  animation: watchPulse 0.9s ease-in-out infinite;
-}
-
-.watch-bell {
-  display: inline-grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  margin-bottom: 12px;
-  color: #b81f1f;
-  background: #fff;
-  border-radius: 50%;
-  font-size: 38px;
-  font-weight: 900;
-}
-
-.watch-card strong {
-  display: block;
-  font-size: 30px;
-}
-
-.watch-card p {
-  margin: 12px 0 20px;
-  color: #fffbe8;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.watch-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.watch-actions .ghost-button {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.68);
-}
-
-@keyframes watchPulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.025);
-  }
 }
 
 .new-badge {
@@ -1050,6 +994,11 @@ textarea {
     width: 100%;
   }
 
+  .topbar nav .nav-icon-button {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
   .page {
     width: min(100% - 24px, 1180px);
     padding-top: 14px;
@@ -1105,25 +1054,17 @@ textarea {
     margin-top: 10px;
   }
 
+  .reminder-settings-panel {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    margin: 0;
+  }
+
   .settings-panel .ghost-button {
     min-height: 46px;
-  }
-
-  .watch-overlay {
-    align-items: start;
-    padding-top: 76px;
-  }
-
-  .watch-card {
-    padding: 26px 16px;
-  }
-
-  .watch-card strong {
-    font-size: 28px;
-  }
-
-  .watch-actions {
-    grid-template-columns: 1fr;
   }
 
   .heading-actions {

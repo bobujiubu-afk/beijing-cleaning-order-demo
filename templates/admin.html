@@ -20,31 +20,15 @@
     </strong>
     <p>新订单和待联系订单会自动排在最上方，处理后小红点自动消失。</p>
   </div>
-  <div class="reminder-settings">
-    <button class="ghost-button settings-toggle" type="button" id="reminderSettingsButton" aria-expanded="false">
-      提醒设置
-    </button>
-    <div class="settings-panel hidden" id="reminderSettingsPanel">
-      <button class="ghost-button" type="button" id="enableSoundButton">开启声音提醒</button>
-      <button class="ghost-button" type="button" id="enableNotificationButton">开启手机消息推送</button>
-      <button class="primary-button" type="button" id="watchModeButton">开启手机值守模式</button>
-      <button class="ghost-button" type="button" id="testReminderButton">测试来单提醒</button>
-      <p>手机端建议开启值守模式并保持后台页面打开；系统通知受手机浏览器限制，网页全屏提醒更稳定。</p>
-    </div>
-  </div>
-  <p class="reminder-status" id="reminderStatus" aria-live="polite"></p>
 </section>
 
-<section class="watch-overlay hidden" id="watchOverlay" role="alertdialog" aria-live="assertive">
-  <div class="watch-card">
-    <span class="watch-bell">!</span>
-    <strong>有新的客户预约</strong>
-    <p id="watchOrderText">请尽快联系客户</p>
-    <div class="watch-actions">
-      <button class="primary-button" type="button" id="watchViewButton">查看待联系订单</button>
-      <button class="ghost-button" type="button" id="watchDismissButton">我知道了</button>
-    </div>
-  </div>
+<section class="settings-panel reminder-settings-panel hidden" id="reminderSettingsPanel" aria-label="消息提醒设置">
+  <strong>消息提醒设置</strong>
+  <button class="ghost-button" type="button" id="enableNotificationButton">开启手机消息推送</button>
+  <button class="ghost-button" type="button" id="testReminderButton">发送测试推送</button>
+  <button class="ghost-button" type="button" id="enableSoundButton">开启页面声音</button>
+  <p class="reminder-status" id="reminderStatus" aria-live="polite"></p>
+  <p>手机要收到后台消息，请从手机桌面图标打开本后台，点“开启手机消息推送”，并允许通知权限。</p>
 </section>
 
 <section class="metric-row compact admin-metrics" id="adminMetrics">
