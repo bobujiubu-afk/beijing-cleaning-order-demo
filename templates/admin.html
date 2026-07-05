@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block title %}老板后台 - 北京东科保洁{% endblock %}
 {% block content %}
-<section class="page-heading">
+<section class="new-order-alert {% if waiting > 0 %}has-new{% endif %}" id="newOrderAlert">
+  <div>
+    <span class="red-dot {% if waiting == 0 %}hidden{% endif %}" id="pendingDot"></span>
+    <strong id="pendingMessage">
+      {% if waiting > 0 %}当前有 {{ waiting }} 个待联系客户{% else %}暂无待联系客户{% endif %}
+    </strong>
+    <p>新订单和待联系订单会自动排在最上方，处理后小红点自动消失。</p>
+  </div>
+  <a class="ghost-button qr-shortcut" href="{{ url_for('appointment_qr') }}">预约二维码</a>
+</section>
+
+<section class="page-heading admin-heading">
   <div>
     <p class="eyebrow">订单统一管理</p>
     <h1>老板后台</h1>
@@ -13,114 +24,44 @@
   </div>
 </section>
 
-<section class="metric-row compact">
-  <div class="metric"><span>今日新客户</span><strong>{{ today_new }}</strong></div>
-  <div class="metric"><span>待联系</span><strong>{{ waiting }}</strong></div>
-  <div class="metric"><span>已报价</span><strong>{{ quoted }}</strong></div>
-  <div class="metric"><span>筛选内成交金额</span><strong>¥{{ "%.0f"|format(deal_amount) }}</strong></div>
+<section class="metric-row compact admin-metrics" id="adminMetrics">
+  <div class="metric"><span>今日新客户</span><strong id="todayNewCount">{{ today_new }}</strong></div>
+  <div class="metric {% if counts['待联系'] > 0 %}metric-danger{% endif %}"><span>待联系</span><strong id="waitingCount">{{ counts["待联系"] }}</strong></div>
+  <div class="metric"><span>已联系</span><strong id="contactedCount">{{ counts["已联系"] }}</strong></div>
+  <div class="metric"><span>已成交</span><strong id="dealedCount">{{ counts["已成交"] }}</strong></div>
 </section>
 
-<section class="panel">
-  <form class="filters" method="get">
+<section class="panel filter-panel">
+  <form class="filters" id="adminFilters" method="get">
     <input name="keyword" value="{{ filters.keyword }}" placeholder="搜索姓名、电话、地址">
-    <select name="status">
-      <option value="">全部状态</option>
-      {% for item in order_statuses %}
-      <option value="{{ item }}" {% if filters.status == item %}selected{% endif %}>{{ item }}</option>
-      {% endfor %}
-    </select>
-    <select name="service_type">
-      <option value="">全部服务</option>
-      {% for item in service_types %}
-      <option value="{{ item }}" {% if filters.service_type == item %}selected{% endif %}>{{ item }}</option>
-      {% endfor %}
-    </select>
-    <select name="source">
-      <option value="">全部来源</option>
-      {% for item in sources %}
-      <option value="{{ item }}" {% if filters.source == item %}selected{% endif %}>{{ item }}</option>
-      {% endfor %}
-    </select>
-    <button class="primary-button" type="submit">筛选</button>
-    <a class="ghost-button" href="{{ url_for('admin') }}">重置</a>
+    <button class="filter-toggle" type="button" aria-expanded="false">筛选</button>
+    <div class="filter-extra">
+      <select name="status">
+        <option value="">全部状态</option>
+        {% for item in order_statuses %}
+        <option value="{{ item }}" {% if filters.status == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+      <select name="service_type">
+        <option value="">全部服务</option>
+        {% for item in service_types %}
+        <option value="{{ item }}" {% if filters.service_type == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+      <select name="source">
+        <option value="">全部来源</option>
+        {% for item in sources %}
+        <option value="{{ item }}" {% if filters.source == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+      <button class="primary-button" type="submit">筛选</button>
+      <a class="ghost-button" href="{{ url_for('admin') }}">重置</a>
+    </div>
   </form>
 </section>
 
-<section class="order-list">
-  {% for order in orders %}
-  <article class="order-card">
-    <div class="order-main">
-      <div>
-        <div class="order-title">
-          <strong>{{ order.customer_name }}</strong>
-          <span class="status status-{{ order.status }}">{{ order.status }}</span>
-        </div>
-        <p>{{ order.phone }} · {{ order.service_type }} · {{ order.area or "未填面积" }}</p>
-        <p>{{ order.address }}</p>
-      </div>
-      <div class="order-meta">
-        <span>{{ order.order_no }}</span>
-        <span>{{ order.created_at }}</span>
-        <span>来源：{{ order.source or "未填" }}</span>
-      </div>
-    </div>
-
-    <details class="order-detail">
-      <summary>查看和修改订单</summary>
-      <div class="detail-grid">
-        <div><span>期望上门</span><strong>{{ order.preferred_time or "未填" }}</strong></div>
-        <div><span>是否开票</span><strong>{{ order.need_invoice }}</strong></div>
-        <div><span>报价金额</span><strong>¥{{ "%.0f"|format(order.quote_amount or 0) }}</strong></div>
-        <div><span>成交金额</span><strong>¥{{ "%.0f"|format(order.deal_amount or 0) }}</strong></div>
-        <div><span>负责人</span><strong>{{ order.owner or "未分配" }}</strong></div>
-        <div><span>回访状态</span><strong>{{ order.follow_up_status }}</strong></div>
-      </div>
-
-      <form class="edit-grid" method="post" action="{{ url_for('update_order', order_id=order.id) }}">
-        <label>
-          订单状态
-          <select name="status">
-            {% for item in order_statuses %}
-            <option value="{{ item }}" {% if order.status == item %}selected{% endif %}>{{ item }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          报价金额
-          <input name="quote_amount" type="number" step="0.01" value="{{ order.quote_amount or 0 }}">
-        </label>
-        <label>
-          成交金额
-          <input name="deal_amount" type="number" step="0.01" value="{{ order.deal_amount or 0 }}">
-        </label>
-        <label>
-          负责人
-          <input name="owner" value="{{ order.owner or '' }}" placeholder="例如：王师傅">
-        </label>
-        <label>
-          回访状态
-          <select name="follow_up_status">
-            {% for item in follow_up_statuses %}
-            <option value="{{ item }}" {% if order.follow_up_status == item %}selected{% endif %}>{{ item }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="wide">
-          备注
-          <textarea name="remark" rows="3">{{ order.remark or "" }}</textarea>
-        </label>
-        <div class="wide form-actions">
-          <button class="primary-button" type="submit">保存修改</button>
-        </div>
-      </form>
-
-      <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" onsubmit="return confirm('确定把这条订单移入删除记录吗？数据会保留在数据库里。');">
-        <button class="danger-button" type="submit">移入删除记录</button>
-      </form>
-    </details>
-  </article>
-  {% else %}
-  <div class="empty">暂无订单，可以先到客户预约页提交一条。</div>
-  {% endfor %}
+<section class="order-list" id="orderList" aria-live="polite">
+  {% include "_order_cards.html" %}
 </section>
+<script src="{{ url_for('static', filename='admin.js') }}"></script>
 {% endblock %}

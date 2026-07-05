@@ -18,26 +18,40 @@ def main():
     bad = client.post("/submit", data={"customer_name": "", "phone": "", "address": ""})
     assert bad.status_code == 400
 
-    test_name = "测试客户自测"
-    good = client.post(
-        "/submit",
-        data={
-            "customer_name": test_name,
-            "phone": "13900000000",
-            "address": "北京市测试区",
-            "service_type": "开荒保洁",
-            "area": "88㎡",
-            "preferred_time": "今天下午",
-            "need_invoice": "否",
-            "source": "微信",
-            "remark": "流程测试",
-        },
-        follow_redirects=False,
-    )
-    assert good.status_code == 302 and "/submit/success" in good.headers["Location"]
+    test_names = ["测试客户自测一", "测试客户自测二", "测试客户自测三"]
+    for index, test_name in enumerate(test_names, start=1):
+        good = client.post(
+            "/submit",
+            data={
+                "customer_name": test_name,
+                "phone": f"1390000000{index}",
+                "address": f"北京市测试区{index}号",
+                "service_type": "开荒保洁",
+                "area": "88㎡",
+                "preferred_time": "今天下午",
+                "need_invoice": "否",
+                "source": "微信",
+                "remark": "流程测试",
+            },
+            follow_redirects=False,
+        )
+        assert good.status_code == 302 and "/submit/success" in good.headers["Location"]
 
     login = client.post("/login", data={"password": "123456"}, follow_redirects=True)
     assert login.status_code == 200 and "老板后台".encode("utf-8") in login.data
+    assert "已报价".encode("utf-8") not in login.data
+    assert "已完成".encode("utf-8") not in login.data
+    assert "phone-link".encode("utf-8") in login.data
+    assert "new-badge".encode("utf-8") in login.data
+
+    api_orders = client.get("/api/orders")
+    assert api_orders.status_code == 200
+    api_data = api_orders.get_json()
+    assert api_data["pending_count"] >= 3
+    assert "测试客户自测三" in api_data["html"]
+    assert api_data["html"].find("测试客户自测三") < api_data["html"].find("测试客户自测二")
+    assert "已报价" not in api_data["html"]
+    assert "已完成" not in api_data["html"]
 
     qr_page = client.get("/appointment-qr")
     assert qr_page.status_code == 200 and "客户预约链接".encode("utf-8") in qr_page.data
@@ -47,13 +61,30 @@ def main():
     conn = sqlite3.connect(DATABASE)
     order_row = conn.execute(
         "SELECT id FROM orders WHERE customer_name = ? AND deleted_at IS NULL ORDER BY id DESC",
-        (test_name,),
+        (test_names[-1],),
     ).fetchone()
     assert order_row is not None
     order_id = order_row[0]
     conn.close()
 
     update = client.post(
+        f"/orders/{order_id}/update",
+        data={
+            "status": "已联系",
+            "quote_amount": "600",
+            "deal_amount": "0",
+            "owner": "老板",
+            "follow_up_status": "已回访",
+            "remark": "已联系测试",
+        },
+    )
+    assert update.status_code == 302
+    after_contact = client.get("/api/orders").get_json()
+    assert "测试客户自测三" in after_contact["html"]
+    contacted_section = after_contact["html"][after_contact["html"].find("测试客户自测三") - 300:after_contact["html"].find("测试客户自测三") + 300]
+    assert "new-badge" not in contacted_section
+
+    deal = client.post(
         f"/orders/{order_id}/update",
         data={
             "status": "已成交",
@@ -64,7 +95,7 @@ def main():
             "remark": "已成交测试",
         },
     )
-    assert update.status_code == 302
+    assert deal.status_code == 302
 
     export = client.get("/export", follow_redirects=True)
     assert export.status_code == 200 and "本次导出的订单明细".encode("utf-8") in export.data
@@ -75,6 +106,9 @@ def main():
     assert excel.status_code == 200
     workbook = load_workbook(BytesIO(excel.data))
     assert workbook.active.max_row >= 2
+    exported_statuses = [cell.value for cell in workbook.active["K"][1:]]
+    assert "已报价" not in exported_statuses
+    assert "已完成" not in exported_statuses
 
     backup = client.get("/backup/database")
     assert backup.status_code == 200 and len(backup.data) > 1000
@@ -86,7 +120,7 @@ def main():
     visible_count = conn.execute("SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL").fetchone()[0]
     conn.close()
     assert deleted_at is not None
-    assert visible_count == 5
+    assert visible_count == 7
 
     seed_demo_data(force=True)
     print("Smoke test passed.")

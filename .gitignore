@@ -4,6 +4,7 @@ __pycache__/
 database.db
 exports/
 tmp_deploy_data/
+backups/
 ollama-project-review.md
 *.log
 .DS_Store

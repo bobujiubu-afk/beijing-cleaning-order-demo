@@ -12,17 +12,17 @@
       <span class="brand-mark">东科</span>
       <span>
         <strong>北京东科保洁服务有限公司</strong>
-        <small>{% if public_page|default(false) %}客户预约登记{% else %}订单管理后台{% endif %}</small>
+        <small>{% if public_page|default(false) %}客户预约登记{% else %}{{ page_label|default("订单管理后台") }}{% endif %}</small>
       </span>
     </a>
     {% if not public_page|default(false) %}
-    <nav>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="topNav">菜单</button>
+    <nav id="topNav">
       {% if session.get("admin_logged_in") %}
       <a href="{{ url_for('admin') }}">老板后台</a>
-      <a href="{{ url_for('appointment_qr') }}">预约二维码</a>
       <a href="{{ url_for('stats') }}">数据统计</a>
       <a href="{{ url_for('export_list') }}">导出记录</a>
-      <a href="{{ url_for('logout') }}">退出</a>
+      <a href="{{ url_for('logout') }}">退出登录</a>
       {% else %}
       <a href="{{ url_for('login') }}">后台登录</a>
       {% endif %}
@@ -41,5 +41,6 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script src="{{ url_for('static', filename='ui.js') }}"></script>
 </body>
 </html>

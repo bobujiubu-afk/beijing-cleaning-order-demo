@@ -4,7 +4,7 @@ import os
 import re
 import sqlite3
 
-from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from openpyxl import Workbook
 import qrcode
 
@@ -42,7 +42,17 @@ SOURCES = [
     "其他",
 ]
 
-ORDER_STATUSES = ["待联系", "已联系", "已报价", "已成交", "已完成", "已取消"]
+ORDER_STATUSES = ["待联系", "已联系", "已成交", "已取消"]
+LEGACY_STATUS_MAP = {"已报价": "已联系", "已完成": "已成交"}
+STATUS_ORDER_SQL = """
+    CASE status
+        WHEN '待联系' THEN 1
+        WHEN '已联系' THEN 2
+        WHEN '已成交' THEN 3
+        WHEN '已取消' THEN 4
+        ELSE 5
+    END
+"""
 FOLLOW_UP_STATUSES = ["未回访", "已回访", "有复购意向", "无复购意向"]
 
 app = Flask(__name__)
@@ -78,11 +88,20 @@ def init_db():
             owner TEXT,
             follow_up_status TEXT DEFAULT '未回访',
             remark TEXT,
+            is_new INTEGER DEFAULT 0,
+            updated_at TEXT,
             deleted_at TEXT
         )
         """
     )
     ensure_column(conn, "orders", "deleted_at", "TEXT")
+    ensure_column(conn, "orders", "is_new", "INTEGER DEFAULT 0")
+    ensure_column(conn, "orders", "updated_at", "TEXT")
+    conn.execute("UPDATE orders SET status = '已联系' WHERE status = '已报价'")
+    conn.execute("UPDATE orders SET status = '已成交' WHERE status = '已完成'")
+    conn.execute("UPDATE orders SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
+    conn.execute("UPDATE orders SET is_new = 1 WHERE status = '待联系'")
+    conn.execute("UPDATE orders SET is_new = 0 WHERE status <> '待联系' AND (is_new IS NULL OR is_new <> 0)")
     conn.commit()
     conn.close()
 
@@ -91,6 +110,51 @@ def ensure_column(conn, table, column, definition):
     columns = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
     if column not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def normalize_status(status):
+    status = LEGACY_STATUS_MAP.get(status, status)
+    return status if status in ORDER_STATUSES else "待联系"
+
+
+def now_text():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalize_order_row(row):
+    order = dict(row)
+    order["status"] = normalize_status(order.get("status"))
+    order["is_new"] = 1 if order["status"] == "待联系" or int(order.get("is_new") or 0) else 0
+    order["updated_at"] = order.get("updated_at") or order.get("created_at")
+    return order
+
+
+def get_order_counts():
+    conn = get_db()
+    rows = conn.execute(
+        """
+        SELECT status, COUNT(*) AS count
+        FROM orders
+        WHERE deleted_at IS NULL
+        GROUP BY status
+        """
+    ).fetchall()
+    conn.close()
+    counts = {status: 0 for status in ORDER_STATUSES}
+    for row in rows:
+        counts[normalize_status(row["status"])] += row["count"]
+    return counts
+
+
+def count_today_orders():
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_db()
+    count = conn.execute(
+        "SELECT COUNT(*) AS count FROM orders WHERE deleted_at IS NULL AND created_at LIKE ?",
+        (f"{today}%",),
+    ).fetchone()["count"]
+    conn.close()
+    return count
 
 
 def make_order_no():
@@ -139,7 +203,7 @@ def seed_demo_data(force=False):
             "preferred_time": "明天下午",
             "need_invoice": "是",
             "source": "小红书",
-            "status": "已报价",
+            "status": "已联系",
             "quote_amount": 800,
             "deal_amount": 0,
             "owner": "王师傅",
@@ -168,10 +232,10 @@ def seed_demo_data(force=False):
             "address": "北京市通州区运河商务区",
             "service_type": "深度保洁",
             "area": "90㎡",
-            "preferred_time": "已完成",
+            "preferred_time": "已服务",
             "need_invoice": "否",
             "source": "熟人介绍",
-            "status": "已完成",
+            "status": "已成交",
             "quote_amount": 500,
             "deal_amount": 500,
             "owner": "李师傅",
@@ -187,7 +251,7 @@ def seed_demo_data(force=False):
             "preferred_time": "下周一",
             "need_invoice": "是",
             "source": "抖音",
-            "status": "已报价",
+            "status": "已联系",
             "quote_amount": 1800,
             "deal_amount": 0,
             "owner": "老板",
@@ -201,14 +265,16 @@ def seed_demo_data(force=False):
         conn.execute(
             """
             INSERT INTO orders (
-                order_no, created_at, customer_name, phone, address, service_type,
+                order_no, created_at, updated_at, is_new, customer_name, phone, address, service_type,
                 area, preferred_time, need_invoice, source, status, quote_amount,
                 deal_amount, owner, follow_up_status, remark
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 f"BJ{now.strftime('%Y%m%d')}{index:04d}",
                 created_at.strftime("%Y-%m-%d %H:%M"),
+                created_at.strftime("%Y-%m-%d %H:%M"),
+                1 if normalize_status(item["status"]) == "待联系" else 0,
                 item["customer_name"],
                 item["phone"],
                 item["address"],
@@ -217,7 +283,7 @@ def seed_demo_data(force=False):
                 item["preferred_time"],
                 item["need_invoice"],
                 item["source"],
-                item["status"],
+                normalize_status(item["status"]),
                 item["quote_amount"],
                 item["deal_amount"],
                 item["owner"],
@@ -284,7 +350,7 @@ def get_orders(filters=None):
 
     if filters.get("status"):
         sql += " AND status = ?"
-        params.append(filters["status"])
+        params.append(normalize_status(filters["status"]))
     if filters.get("service_type"):
         sql += " AND service_type = ?"
         params.append(filters["service_type"])
@@ -296,29 +362,39 @@ def get_orders(filters=None):
         keyword = f"%{filters['keyword']}%"
         params.extend([keyword, keyword, keyword])
 
-    sql += " ORDER BY created_at DESC, id DESC"
+    sql += f"""
+        ORDER BY
+            {STATUS_ORDER_SQL} ASC,
+            CASE WHEN status = '待联系' THEN 1 ELSE COALESCE(is_new, 0) END DESC,
+            COALESCE(NULLIF(updated_at, ''), created_at) DESC,
+            created_at DESC,
+            id DESC
+    """
     conn = get_db()
     orders = conn.execute(sql, params).fetchall()
     conn.close()
-    return orders
+    return [normalize_order_row(order) for order in orders]
 
 
 def summarize_orders(orders):
     service_counts = {}
     source_counts = {}
     total_amount = 0
+    status_counts = {status: 0 for status in ORDER_STATUSES}
     for order in orders:
+        status = normalize_status(order["status"])
+        status_counts[status] += 1
         service_counts[order["service_type"]] = service_counts.get(order["service_type"], 0) + 1
         source = order["source"] or "未填写"
         source_counts[source] = source_counts.get(source, 0) + 1
-        if order["status"] in ["已成交", "已完成"]:
+        if status == "已成交":
             total_amount += money(order["deal_amount"])
     return {
         "total": len(orders),
-        "waiting": sum(1 for order in orders if order["status"] == "待联系"),
-        "quoted": sum(1 for order in orders if order["status"] == "已报价"),
-        "dealed": sum(1 for order in orders if order["status"] == "已成交"),
-        "done": sum(1 for order in orders if order["status"] == "已完成"),
+        "waiting": status_counts["待联系"],
+        "contacted": status_counts["已联系"],
+        "dealed": status_counts["已成交"],
+        "canceled": status_counts["已取消"],
         "amount": total_amount,
         "service_counts": sorted(service_counts.items(), key=lambda item: item[1], reverse=True),
         "source_counts": sorted(source_counts.items(), key=lambda item: item[1], reverse=True),
@@ -352,14 +428,15 @@ def submit():
         conn.execute(
             """
             INSERT INTO orders (
-                order_no, created_at, customer_name, phone, address, service_type,
+                order_no, created_at, updated_at, is_new, customer_name, phone, address, service_type,
                 area, preferred_time, need_invoice, source, status, quote_amount,
                 deal_amount, owner, follow_up_status, remark
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待联系', 0, 0, '', '未回访', ?)
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, '待联系', 0, 0, '', '未回访', ?)
             """,
             (
                 make_order_no(),
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                now_text(),
+                now_text(),
                 data["customer_name"],
                 data["phone"],
                 data["address"],
@@ -423,26 +500,60 @@ def admin():
     if not require_admin():
         return render_template("login.html")
     filters = {
-        "status": request.args.get("status", "").strip(),
+        "status": normalize_status(request.args.get("status", "").strip()) if request.args.get("status", "").strip() else "",
         "service_type": request.args.get("service_type", "").strip(),
         "source": request.args.get("source", "").strip(),
         "keyword": request.args.get("keyword", "").strip(),
     }
     orders = get_orders(filters)
-    today = datetime.now().strftime("%Y-%m-%d")
-    today_new = sum(1 for order in orders if order["created_at"].startswith(today))
-    waiting = sum(1 for order in orders if order["status"] == "待联系")
-    quoted = sum(1 for order in orders if order["status"] == "已报价")
-    deal_amount = sum(money(order["deal_amount"]) for order in orders if order["status"] in ["已成交", "已完成"])
+    counts = get_order_counts()
+    filtered_summary = summarize_orders(orders)
     return render_template(
         "admin.html",
         orders=orders,
         filters=filters,
-        today_new=today_new,
-        waiting=waiting,
-        quoted=quoted,
-        deal_amount=deal_amount,
+        today_new=count_today_orders(),
+        counts=counts,
+        waiting=counts["待联系"],
+        filtered_summary=filtered_summary,
+        deal_amount=filtered_summary["amount"],
+        page_label="老板后台",
     )
+
+
+@app.route("/api/order-counts")
+def api_order_counts():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    counts = get_order_counts()
+    return jsonify({
+        "counts": counts,
+        "pending_count": counts["待联系"],
+        "today_new": count_today_orders(),
+    })
+
+
+@app.route("/api/orders")
+def api_orders():
+    if not require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    filters = {
+        "status": normalize_status(request.args.get("status", "").strip()) if request.args.get("status", "").strip() else "",
+        "service_type": request.args.get("service_type", "").strip(),
+        "source": request.args.get("source", "").strip(),
+        "keyword": request.args.get("keyword", "").strip(),
+    }
+    orders = get_orders(filters)
+    counts = get_order_counts()
+    latest_updated_at = max((order["updated_at"] or order["created_at"] for order in orders), default="")
+    return jsonify({
+        "counts": counts,
+        "pending_count": counts["待联系"],
+        "today_new": count_today_orders(),
+        "latest_updated_at": latest_updated_at,
+        "html": render_template("_order_cards.html", orders=orders),
+        "summary": summarize_orders(orders),
+    })
 
 
 @app.route("/orders/<int:order_id>/update", methods=["POST"])
@@ -451,12 +562,13 @@ def update_order(order_id):
         return redirect(url_for("login"))
     status = validate_choice(request.form.get("status"), ORDER_STATUSES, "待联系")
     follow_up_status = validate_choice(request.form.get("follow_up_status"), FOLLOW_UP_STATUSES, "未回访")
+    is_new = 1 if status == "待联系" else 0
     conn = get_db()
     conn.execute(
         """
         UPDATE orders
         SET status = ?, quote_amount = ?, deal_amount = ?, owner = ?,
-            follow_up_status = ?, remark = ?
+            follow_up_status = ?, remark = ?, is_new = ?, updated_at = ?
         WHERE id = ?
         """,
         (
@@ -466,6 +578,8 @@ def update_order(order_id):
             clean_text(request.form.get("owner"), 40),
             follow_up_status,
             clean_text(request.form.get("remark"), 500),
+            is_new,
+            now_text(),
             order_id,
         ),
     )
@@ -480,7 +594,8 @@ def delete_order(order_id):
     if not require_admin():
         return redirect(url_for("login"))
     conn = get_db()
-    conn.execute("UPDATE orders SET deleted_at = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M"), order_id))
+    current_time = now_text()
+    conn.execute("UPDATE orders SET deleted_at = ?, updated_at = ? WHERE id = ?", (current_time, current_time, order_id))
     conn.commit()
     conn.close()
     flash("订单已移入删除记录，数据库中仍保留。", "success")
@@ -492,7 +607,7 @@ def stats():
     if not require_admin():
         return redirect(url_for("login"))
     conn = get_db()
-    orders = conn.execute("SELECT * FROM orders WHERE deleted_at IS NULL").fetchall()
+    orders = [normalize_order_row(order) for order in conn.execute("SELECT * FROM orders WHERE deleted_at IS NULL").fetchall()]
     service_counts = conn.execute(
         "SELECT service_type, COUNT(*) AS count FROM orders WHERE deleted_at IS NULL GROUP BY service_type ORDER BY count DESC"
     ).fetchall()
@@ -503,18 +618,21 @@ def stats():
 
     month_prefix = datetime.now().strftime("%Y-%m")
     current_month = [order for order in orders if order["created_at"].startswith(month_prefix)]
-    month_deals = [order for order in current_month if order["status"] in ["已成交", "已完成"]]
+    month_deals = [order for order in current_month if normalize_status(order["status"]) == "已成交"]
+    status_counts = {status: 0 for status in ORDER_STATUSES}
+    for order in orders:
+        status_counts[normalize_status(order["status"])] += 1
     data = {
         "total": len(orders),
-        "waiting": sum(1 for order in orders if order["status"] == "待联系"),
-        "quoted": sum(1 for order in orders if order["status"] == "已报价"),
-        "dealed": sum(1 for order in orders if order["status"] == "已成交"),
-        "done": sum(1 for order in orders if order["status"] == "已完成"),
+        "waiting": status_counts["待联系"],
+        "contacted": status_counts["已联系"],
+        "dealed": status_counts["已成交"],
+        "canceled": status_counts["已取消"],
         "month_total": len(current_month),
         "month_dealed": len(month_deals),
         "month_amount": sum(money(order["deal_amount"]) for order in month_deals),
     }
-    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts)
+    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts, page_label="数据统计")
 
 
 @app.route("/export")
@@ -562,7 +680,7 @@ def export_excel():
             order["preferred_time"],
             order["need_invoice"],
             order["source"],
-            order["status"],
+            normalize_status(order["status"]),
             order["quote_amount"],
             order["deal_amount"],
             order["owner"],
@@ -603,6 +721,7 @@ def export_list():
         orders=None,
         summary=None,
         filters={},
+        page_label="导出记录",
     )
 
 
@@ -635,6 +754,7 @@ def export_result(filename):
         orders=orders,
         summary=summarize_orders(orders),
         filters=filters,
+        page_label="导出记录",
     )
 
 

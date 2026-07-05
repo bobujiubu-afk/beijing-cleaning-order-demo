@@ -111,6 +111,11 @@ nav {
   flex-wrap: wrap;
 }
 
+.menu-toggle,
+.filter-toggle {
+  display: none;
+}
+
 nav a,
 .ghost-button,
 .primary-button,
@@ -225,6 +230,10 @@ nav a,
   align-items: end;
 }
 
+.filter-extra {
+  display: contents;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -247,6 +256,22 @@ textarea {
 
 textarea {
   resize: vertical;
+}
+
+.address-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.locate-button {
+  white-space: nowrap;
+}
+
+.field-tip {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .wide {
@@ -324,6 +349,67 @@ textarea {
   background: #f0fbf7;
 }
 
+.metric-danger {
+  border-color: rgba(184, 50, 50, 0.28);
+  background: #fff4f4;
+}
+
+.new-order-alert {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.new-order-alert.has-new {
+  border-color: rgba(184, 50, 50, 0.35);
+  background: #fff7f7;
+}
+
+.new-order-alert strong {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 20px;
+}
+
+.new-order-alert p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.red-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  background: #d42121;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(212, 33, 33, 0.12);
+}
+
+.red-dot.hidden {
+  display: none;
+}
+
+.new-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  color: #fff;
+  background: #d42121;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .order-list {
   display: grid;
   gap: 14px;
@@ -332,6 +418,10 @@ textarea {
 
 .order-card {
   padding: 18px;
+}
+
+.order-card-new {
+  border-color: rgba(184, 50, 50, 0.28);
 }
 
 .order-main {
@@ -343,6 +433,21 @@ textarea {
 .order-main p {
   margin: 8px 0 0;
   color: var(--muted);
+}
+
+.phone-link {
+  display: inline-flex;
+  margin-top: 8px;
+  color: #0b6fbd;
+  font-size: 22px;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.order-brief,
+.order-address {
+  line-height: 1.45;
 }
 
 .order-title {
@@ -370,13 +475,12 @@ textarea {
   background: #fff1cd;
 }
 
-.status-已报价 {
+.status-已联系 {
   color: #0b5d88;
   background: #dff2ff;
 }
 
-.status-已成交,
-.status-已完成 {
+.status-已成交 {
   color: #0f6b48;
   background: #dcf7e9;
 }
@@ -564,23 +668,101 @@ textarea {
 }
 
 @media (max-width: 860px) {
-  .topbar,
+  .topbar {
+    min-height: 56px;
+    padding: 8px 14px;
+    gap: 10px;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 7px;
+    font-size: 13px;
+  }
+
+  .brand strong {
+    display: block;
+    max-width: 48vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+  }
+
+  .brand small {
+    font-size: 12px;
+  }
+
+  .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 12px;
+    color: #fff;
+    background: var(--brand);
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 800;
+  }
+
+  .topbar nav {
+    position: absolute;
+    top: 56px;
+    right: 12px;
+    left: 12px;
+    display: none;
+    grid-template-columns: 1fr;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+
+  .topbar.menu-open nav {
+    display: grid;
+  }
+
+  .topbar nav a {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .page {
+    width: min(100% - 24px, 1180px);
+    padding-top: 14px;
+  }
+
   .hero,
   .page-heading,
   .order-main,
-  .export-item {
+  .export-item,
+  .new-order-alert {
     display: block;
   }
 
-  nav {
-    margin-top: 12px;
+  .admin-heading {
+    display: none;
   }
 
-  nav a,
-  .ghost-button,
-  .primary-button,
-  .danger-button {
-    width: 100%;
+  .new-order-alert {
+    padding: 14px;
+  }
+
+  .new-order-alert strong {
+    font-size: 18px;
+  }
+
+  .qr-shortcut {
+    margin-top: 10px;
   }
 
   .heading-actions {
@@ -590,7 +772,6 @@ textarea {
 
   .form-grid,
   .edit-grid,
-  .filters,
   .metric-row,
   .metric-row.compact,
   .chart-grid,
@@ -599,9 +780,70 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .admin-metrics {
+    display: none;
+  }
+
+  .filter-panel {
+    padding: 12px;
+  }
+
+  .filters {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 14px;
+    color: var(--brand-dark);
+    background: #fff;
+    border: 1px solid #bfd7cf;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 800;
+  }
+
+  .filter-extra {
+    display: none;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .filters.filters-open .filter-extra {
+    display: grid;
+  }
+
+  .order-card {
+    padding: 14px;
+  }
+
+  .address-row {
+    grid-template-columns: 1fr;
+  }
+
+  .order-title {
+    gap: 8px;
+    font-size: 19px;
+  }
+
+  .phone-link {
+    font-size: 24px;
+  }
+
   .order-meta {
     margin-top: 12px;
     text-align: left;
+  }
+
+  .ghost-button,
+  .primary-button,
+  .danger-button {
+    width: 100%;
   }
 
   .bar-row {

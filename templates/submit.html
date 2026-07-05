@@ -21,7 +21,11 @@
     </label>
     <label class="wide">
       服务地址
-      <input name="address" required maxlength="160" value="{{ form_data.address or '' }}" placeholder="例如：北京市朝阳区某小区">
+      <div class="address-row">
+        <input id="addressInput" name="address" required maxlength="160" value="{{ form_data.address or '' }}" placeholder="例如：北京市朝阳区某小区">
+        <button class="ghost-button locate-button" type="button" id="locateButton">自动定位</button>
+      </div>
+      <small class="field-tip" id="locationTip">可手动填写，也可以授权定位后自动填入当前位置。</small>
     </label>
     <label>
       服务类型
@@ -63,4 +67,5 @@
     </div>
   </form>
 </section>
+<script src="{{ url_for('static', filename='submit.js') }}"></script>
 {% endblock %}

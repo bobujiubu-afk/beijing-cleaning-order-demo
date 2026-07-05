@@ -13,9 +13,9 @@
 <section class="metric-row">
   <div class="metric"><span>总订单数</span><strong>{{ data.total }}</strong></div>
   <div class="metric"><span>待联系</span><strong>{{ data.waiting }}</strong></div>
-  <div class="metric"><span>已报价</span><strong>{{ data.quoted }}</strong></div>
+  <div class="metric"><span>已联系</span><strong>{{ data.contacted }}</strong></div>
   <div class="metric"><span>已成交</span><strong>{{ data.dealed }}</strong></div>
-  <div class="metric"><span>已完成</span><strong>{{ data.done }}</strong></div>
+  <div class="metric"><span>已取消</span><strong>{{ data.canceled }}</strong></div>
   <div class="metric highlight"><span>本月订单</span><strong>{{ data.month_total }}</strong></div>
   <div class="metric highlight"><span>本月成交</span><strong>{{ data.month_dealed }}</strong></div>
   <div class="metric highlight"><span>本月成交金额</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
