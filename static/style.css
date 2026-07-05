@@ -420,6 +420,40 @@ textarea {
   justify-content: flex-end;
 }
 
+.reminder-settings {
+  position: relative;
+  align-self: flex-start;
+}
+
+.settings-toggle {
+  min-width: 102px;
+}
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  width: 260px;
+  gap: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.settings-panel.hidden {
+  display: none;
+}
+
+.settings-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .reminder-status {
   flex-basis: 100%;
   margin: 0;
@@ -825,6 +859,16 @@ textarea {
   .reminder-actions {
     display: grid;
     grid-template-columns: 1fr;
+    margin-top: 10px;
+  }
+
+  .reminder-settings {
+    margin-top: 10px;
+  }
+
+  .settings-panel {
+    position: static;
+    width: 100%;
     margin-top: 10px;
   }
 

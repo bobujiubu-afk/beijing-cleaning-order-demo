@@ -6,9 +6,11 @@
   var titleTimer = null;
   var titleFlashOn = false;
   var lastSoundAt = 0;
+  var soundBurstTimer = null;
   var soundEnabled = localStorage.getItem("dongkeSoundEnabled") === "1";
   var notificationEnabled = localStorage.getItem("dongkeNotificationEnabled") === "1";
   var audioContext = null;
+  var defaultIconHref = null;
 
   function qs(selector) {
     return document.querySelector(selector);
@@ -42,6 +44,7 @@
       stopTitleFlash();
       hideMessageAlert();
     }
+    updateAppBadge(pending);
   }
 
   function isEditing() {
@@ -71,13 +74,28 @@
     var gain = context.createGain();
     oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(880, context.currentTime);
+    oscillator.frequency.setValueAtTime(1180, context.currentTime + 0.16);
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.8);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.45);
     oscillator.connect(gain);
     gain.connect(context.destination);
     oscillator.start();
-    oscillator.stop(context.currentTime + 0.85);
+    oscillator.stop(context.currentTime + 0.48);
+  }
+
+  function playSingleNewOrderSound() {
+    var audio = new Audio("/static/sounds/new-order.mp3");
+    audio.preload = "auto";
+    audio.volume = 0.9;
+
+    audio.play().catch(function () {
+      try {
+        beepFallback();
+      } catch (error) {
+        setStatus("声音被浏览器拦截，请点击“开启声音提醒”。", true);
+      }
+    });
   }
 
   function playNewOrderSound() {
@@ -87,20 +105,21 @@
     }
 
     var now = Date.now();
-    if (now - lastSoundAt < 3000) return;
+    if (now - lastSoundAt < 8000) return;
     lastSoundAt = now;
 
-    var audio = new Audio("/static/sounds/new-order.mp3");
-    audio.preload = "auto";
-    audio.volume = 0.85;
-
-    audio.play().catch(function () {
-      try {
-        beepFallback();
-      } catch (error) {
-        setStatus("声音被浏览器拦截，请点击“开启声音提醒”。", true);
+    if (soundBurstTimer) window.clearInterval(soundBurstTimer);
+    var count = 0;
+    playSingleNewOrderSound();
+    soundBurstTimer = window.setInterval(function () {
+      count += 1;
+      if (count >= 2) {
+        window.clearInterval(soundBurstTimer);
+        soundBurstTimer = null;
+        return;
       }
-    });
+      playSingleNewOrderSound();
+    }, 900);
   }
 
   function enableSoundAlert() {
@@ -125,7 +144,10 @@
     Notification.requestPermission().then(function (permission) {
       notificationEnabled = permission === "granted";
       localStorage.setItem("dongkeNotificationEnabled", notificationEnabled ? "1" : "0");
-      setStatus(notificationEnabled ? "系统通知提醒已开启。" : "系统通知未授权。", !notificationEnabled);
+      if (notificationEnabled && "serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.catch(function () {});
+      }
+      setStatus(notificationEnabled ? "手机/系统通知提醒已开启。" : "系统通知未授权。", !notificationEnabled);
     });
   }
 
@@ -135,10 +157,37 @@
     }
 
     var body = [order.customer_name, order.service_type, order.phone].filter(Boolean).join("｜");
+    var options = {
+      body: body,
+      icon: "/static/icons/icon-192.png",
+      badge: "/static/icons/icon-192.png",
+      tag: "dongke-new-order-" + order.id,
+      renotify: true,
+      requireInteraction: true,
+      data: { url: "/admin?status=待联系" }
+    };
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then(function (registration) {
+          return registration.showNotification("北京东科保洁有新订单", options);
+        })
+        .catch(function () {
+          showPageNotification(body, order);
+        });
+      return;
+    }
+
+    showPageNotification(body, order);
+  }
+
+  function showPageNotification(body, order) {
     var notification = new Notification("北京东科保洁有新订单", {
       body: body,
+      icon: "/static/icons/icon-192.png",
       tag: "dongke-new-order-" + order.id,
-      renotify: true
+      renotify: true,
+      requireInteraction: true
     });
 
     notification.onclick = function () {
@@ -164,6 +213,60 @@
       titleTimer = null;
     }
     document.title = normalTitle;
+  }
+
+  function ensureFavicon() {
+    var link = document.querySelector("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    if (!defaultIconHref) {
+      defaultIconHref = link.href || "/static/icons/icon-192.png";
+    }
+    return link;
+  }
+
+  function drawBadgeIcon(count) {
+    var canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    var context = canvas.getContext("2d");
+    context.fillStyle = "#176f5c";
+    context.fillRect(0, 0, 64, 64);
+    context.fillStyle = "#ffffff";
+    context.font = "bold 26px Microsoft YaHei, Arial";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("东", 32, 34);
+
+    if (count > 0) {
+      context.fillStyle = "#d42121";
+      context.beginPath();
+      context.arc(49, 15, 14, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#ffffff";
+      context.font = "bold 15px Arial";
+      context.fillText(count > 9 ? "9+" : String(count), 49, 16);
+    }
+
+    return canvas.toDataURL("image/png");
+  }
+
+  function updateFaviconBadge(count) {
+    var link = ensureFavicon();
+    link.href = count > 0 ? drawBadgeIcon(count) : defaultIconHref;
+  }
+
+  function updateAppBadge(count) {
+    var safeCount = Math.max(0, Number(count || 0));
+    updateFaviconBadge(safeCount);
+    if ("setAppBadge" in navigator && safeCount > 0) {
+      navigator.setAppBadge(safeCount).catch(function () {});
+    } else if ("clearAppBadge" in navigator && safeCount === 0) {
+      navigator.clearAppBadge().catch(function () {});
+    }
   }
 
   function showMessageAlert(data) {
@@ -240,6 +343,8 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     document.title = normalTitle;
+    ensureFavicon();
+    updateFaviconBadge(0);
 
     var filterButton = qs(".filter-toggle");
     var filters = qs("#adminFilters");
@@ -247,6 +352,15 @@
       filterButton.addEventListener("click", function () {
         var open = filters.classList.toggle("filters-open");
         filterButton.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    }
+
+    var settingsButton = qs("#reminderSettingsButton");
+    var settingsPanel = qs("#reminderSettingsPanel");
+    if (settingsButton && settingsPanel) {
+      settingsButton.addEventListener("click", function () {
+        var open = settingsPanel.classList.toggle("hidden") === false;
+        settingsButton.setAttribute("aria-expanded", open ? "true" : "false");
       });
     }
 
@@ -288,5 +402,6 @@
 
   window.addEventListener("beforeunload", function () {
     if (titleTimer) window.clearInterval(titleTimer);
+    if (soundBurstTimer) window.clearInterval(soundBurstTimer);
   });
 })();
