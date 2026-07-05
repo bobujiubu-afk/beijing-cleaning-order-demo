@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}客户预约登记 - 北京东科保洁{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">专业保洁 · 开荒保洁 · 地毯清洗 · 石材结晶</p>
+    <h1>客户预约登记</h1>
+    <p>请填写您的服务需求，我们会尽快联系您确认时间和报价。</p>
+  </div>
+</section>
+
+<section class="panel">
+  <form class="form-grid" method="post">
+    <label>
+      客户姓名
+      <input name="customer_name" required maxlength="40" value="{{ form_data.customer_name or '' }}" placeholder="例如：张先生">
+    </label>
+    <label>
+      联系电话
+      <input name="phone" required maxlength="30" inputmode="tel" value="{{ form_data.phone or '' }}" placeholder="请输入手机号">
+    </label>
+    <label class="wide">
+      服务地址
+      <input name="address" required maxlength="160" value="{{ form_data.address or '' }}" placeholder="例如：北京市朝阳区某小区">
+    </label>
+    <label>
+      服务类型
+      <select name="service_type" required>
+        {% for item in service_types %}
+        <option value="{{ item }}" {% if form_data.service_type == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      房屋面积
+      <input name="area" maxlength="40" value="{{ form_data.area or '' }}" placeholder="例如：120㎡ / 办公室500㎡">
+    </label>
+    <label>
+      期望上门时间
+      <input name="preferred_time" maxlength="80" value="{{ form_data.preferred_time or '' }}" placeholder="例如：本周六上午">
+    </label>
+    <label>
+      是否需要开票
+      <select name="need_invoice">
+        <option value="否" {% if form_data.need_invoice == "否" %}selected{% endif %}>否</option>
+        <option value="是" {% if form_data.need_invoice == "是" %}selected{% endif %}>是</option>
+      </select>
+    </label>
+    <label>
+      客户来源
+      <select name="source">
+        {% for item in sources %}
+        <option value="{{ item }}" {% if form_data.source == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="wide">
+      备注
+      <textarea name="remark" rows="4" maxlength="500" placeholder="例如：装修后开荒，重点清洁窗槽、厨房、卫生间">{{ form_data.remark or "" }}</textarea>
+    </label>
+    <div class="wide form-actions">
+      <button class="primary-button" type="submit">提交预约信息</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

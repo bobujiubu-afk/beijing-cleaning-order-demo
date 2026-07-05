@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}预约二维码 - 北京东科保洁{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">客户扫码入口</p>
+    <h1>预约二维码</h1>
+    <p>把这个二维码发给客户或打印出来，客户扫码后只进入预约登记页。</p>
+  </div>
+  <a class="primary-button" href="{{ url_for('admin') }}">返回后台</a>
+</section>
+
+<section class="panel qr-panel">
+  <div class="qr-box">
+    <img src="{{ url_for('appointment_qr_png') }}" alt="客户预约二维码">
+  </div>
+  <div class="qr-copy">
+    <h2>客户预约链接</h2>
+    <p>{{ submit_link }}</p>
+    <p class="path-note">本地演示时，如果客户用手机扫电脑上的 127.0.0.1 链接，手机可能打不开；正式给客户用时需要部署到线上域名，或设置同局域网可访问地址。</p>
+    <a class="ghost-button" href="{{ url_for('appointment_qr_png') }}" target="_blank">单独打开二维码图片</a>
+  </div>
+</section>
+{% endblock %}

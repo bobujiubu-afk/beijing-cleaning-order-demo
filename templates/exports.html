@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Excel 导出结果 - 北京东科保洁{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Excel 导出</p>
+    <h1>导出结果</h1>
+    <p>系统已把订单表保存到项目的 exports 文件夹，下面可以直接下载。</p>
+  </div>
+  <a class="primary-button" href="{{ url_for('admin') }}">返回后台</a>
+</section>
+
+<section class="panel">
+  <p class="path-note">保存位置：{{ export_dir }}</p>
+  <div class="export-list">
+    {% for file in files %}
+    <div class="export-item {% if current_file == file.filename %}current{% endif %}">
+      <div>
+        <strong>{{ file.filename }}</strong>
+        <span>{{ file.mtime }} · {{ file.size_kb }} KB</span>
+      </div>
+      <a class="primary-button" href="{{ url_for('download_export', filename=file.filename) }}">下载这个 Excel</a>
+    </div>
+    {% else %}
+    <div class="empty">还没有导出文件。</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if summary %}
+<section class="metric-row compact export-summary">
+  <div class="metric"><span>导出订单数</span><strong>{{ summary.total }}</strong></div>
+  <div class="metric"><span>待联系</span><strong>{{ summary.waiting }}</strong></div>
+  <div class="metric"><span>已报价</span><strong>{{ summary.quoted }}</strong></div>
+  <div class="metric"><span>已成交/完成金额</span><strong>¥{{ "%.0f"|format(summary.amount) }}</strong></div>
+</section>
+
+<section class="chart-grid">
+  <div class="panel">
+    <h2>本次导出服务类型</h2>
+    {% for name, count in summary.service_counts %}
+    <div class="bar-row">
+      <span>{{ name }}</span>
+      <div class="bar"><i style="width: {{ (count / summary.total * 100) if summary.total else 0 }}%"></i></div>
+      <strong>{{ count }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>本次导出客户来源</h2>
+    {% for name, count in summary.source_counts %}
+    <div class="bar-row">
+      <span>{{ name }}</span>
+      <div class="bar green"><i style="width: {{ (count / summary.total * 100) if summary.total else 0 }}%"></i></div>
+      <strong>{{ count }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel export-table-panel">
+  <h2>本次导出的订单明细</h2>
+  <div class="table-scroll">
+    <table class="export-table">
+      <thead>
+        <tr>
+          <th>订单编号</th>
+          <th>提交时间</th>
+          <th>客户</th>
+          <th>电话</th>
+          <th>服务</th>
+          <th>状态</th>
+          <th>报价</th>
+          <th>成交</th>
+          <th>来源</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>{{ order.order_no }}</td>
+          <td>{{ order.created_at }}</td>
+          <td>{{ order.customer_name }}</td>
+          <td>{{ order.phone }}</td>
+          <td>{{ order.service_type }}</td>
+          <td><span class="status status-{{ order.status }}">{{ order.status }}</span></td>
+          <td>¥{{ "%.0f"|format(order.quote_amount or 0) }}</td>
+          <td>¥{{ "%.0f"|format(order.deal_amount or 0) }}</td>
+          <td>{{ order.source or "未填" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

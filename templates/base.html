@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}北京东科保洁客户预约系统{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('admin') if session.get('admin_logged_in') and not public_page|default(false) else url_for('submit') }}">
+      <span class="brand-mark">东科</span>
+      <span>
+        <strong>北京东科保洁服务有限公司</strong>
+        <small>{% if public_page|default(false) %}客户预约登记{% else %}订单管理后台{% endif %}</small>
+      </span>
+    </a>
+    {% if not public_page|default(false) %}
+    <nav>
+      {% if session.get("admin_logged_in") %}
+      <a href="{{ url_for('admin') }}">老板后台</a>
+      <a href="{{ url_for('appointment_qr') }}">预约二维码</a>
+      <a href="{{ url_for('stats') }}">数据统计</a>
+      <a href="{{ url_for('export_list') }}">导出记录</a>
+      <a href="{{ url_for('logout') }}">退出</a>
+      {% else %}
+      <a href="{{ url_for('login') }}">后台登录</a>
+      {% endif %}
+    </nav>
+    {% endif %}
+  </header>
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <section class="flash-list">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </section>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

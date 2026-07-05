@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}数据统计 - 北京东科保洁{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">本月经营看板</p>
+    <h1>数据统计</h1>
+    <p>一眼看清订单数量、成交情况、服务类型和客户来源。</p>
+  </div>
+  <a class="primary-button" href="{{ url_for('admin') }}">查看订单</a>
+</section>
+
+<section class="metric-row">
+  <div class="metric"><span>总订单数</span><strong>{{ data.total }}</strong></div>
+  <div class="metric"><span>待联系</span><strong>{{ data.waiting }}</strong></div>
+  <div class="metric"><span>已报价</span><strong>{{ data.quoted }}</strong></div>
+  <div class="metric"><span>已成交</span><strong>{{ data.dealed }}</strong></div>
+  <div class="metric"><span>已完成</span><strong>{{ data.done }}</strong></div>
+  <div class="metric highlight"><span>本月订单</span><strong>{{ data.month_total }}</strong></div>
+  <div class="metric highlight"><span>本月成交</span><strong>{{ data.month_dealed }}</strong></div>
+  <div class="metric highlight"><span>本月成交金额</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
+</section>
+
+<section class="chart-grid">
+  <div class="panel">
+    <h2>各服务类型订单数量</h2>
+    {% for item in service_counts %}
+    <div class="bar-row">
+      <span>{{ item.service_type }}</span>
+      <div class="bar"><i style="width: {{ (item.count / data.total * 100) if data.total else 0 }}%"></i></div>
+      <strong>{{ item.count }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <h2>各客户来源订单数量</h2>
+    {% for item in source_counts %}
+    <div class="bar-row">
+      <span>{{ item.source or "未填写" }}</span>
+      <div class="bar green"><i style="width: {{ (item.count / data.total * 100) if data.total else 0 }}%"></i></div>
+      <strong>{{ item.count }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

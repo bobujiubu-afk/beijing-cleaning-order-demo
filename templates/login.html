@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}后台登录 - 北京东科保洁{% endblock %}
+{% block content %}
+<section class="success-box login-box">
+  <h1>老板后台登录</h1>
+  <p>请输入后台密码后查看订单、统计和导出数据。</p>
+  <form method="post" class="login-form">
+    <label>
+      后台密码
+      <input name="password" type="password" required autofocus placeholder="默认演示密码：123456">
+    </label>
+    <button class="primary-button" type="submit">进入后台</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+database.db
+exports/
+tmp_deploy_data/
+ollama-project-review.md
+*.log
+.DS_Store
