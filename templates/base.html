@@ -20,6 +20,7 @@
     <nav id="topNav">
       {% if session.get("admin_logged_in") %}
       <a href="{{ url_for('admin') }}">老板后台</a>
+      <a href="{{ url_for('appointment_qr') }}">预约二维码</a>
       <a href="{{ url_for('stats') }}">数据统计</a>
       <a href="{{ url_for('export_list') }}">导出记录</a>
       <a href="{{ url_for('logout') }}">退出登录</a>

@@ -3,6 +3,8 @@ from io import BytesIO
 import os
 import re
 import sqlite3
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from openpyxl import Workbook
@@ -17,6 +19,7 @@ EXPORT_DIR = os.path.join(DATA_DIR, "exports")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
 SEED_DEMO = os.environ.get("SEED_DEMO", "1") == "1"
 PUBLIC_SUBMIT_URL = os.environ.get("PUBLIC_SUBMIT_URL", "")
+AMAP_KEY = os.environ.get("AMAP_KEY", "")
 
 SERVICE_TYPES = [
     "开荒保洁",
@@ -319,6 +322,42 @@ def submit_url():
     return PUBLIC_SUBMIT_URL or url_for("submit", _external=True)
 
 
+def fetch_json(url, timeout=8):
+    request_obj = Request(url, headers={"User-Agent": "BeijingCleaningOrderDemo/1.0"})
+    with urlopen(request_obj, timeout=timeout) as response:
+        import json
+
+        return json.loads(response.read().decode("utf-8"))
+
+
+def reverse_geocode_with_amap(latitude, longitude):
+    if not AMAP_KEY:
+        return ""
+    params = {
+        "key": AMAP_KEY,
+        "location": f"{longitude},{latitude}",
+        "radius": 1000,
+        "extensions": "base",
+        "output": "json",
+    }
+    data = fetch_json("https://restapi.amap.com/v3/geocode/regeo?" + urlencode(params))
+    if data.get("status") != "1":
+        return ""
+    regeocode = data.get("regeocode") or {}
+    return regeocode.get("formatted_address") or ""
+
+
+def reverse_geocode_with_osm(latitude, longitude):
+    params = {
+        "format": "jsonv2",
+        "accept-language": "zh-CN",
+        "lat": latitude,
+        "lon": longitude,
+    }
+    data = fetch_json("https://nominatim.openstreetmap.org/reverse?" + urlencode(params))
+    return data.get("display_name") or ""
+
+
 def validate_submit_form(form):
     data = {
         "customer_name": clean_text(form.get("customer_name"), 40),
@@ -457,6 +496,48 @@ def submit():
 @app.route("/submit/success")
 def submit_success():
     return render_template("submit_success.html", public_page=True)
+
+
+@app.route("/api/reverse-geocode", methods=["POST"])
+def api_reverse_geocode():
+    payload = request.get_json(silent=True) or {}
+    try:
+        latitude = float(payload.get("latitude"))
+        longitude = float(payload.get("longitude"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "定位坐标无效"}), 400
+
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return jsonify({"ok": False, "error": "定位坐标超出范围"}), 400
+
+    address = ""
+    provider = ""
+    try:
+        address = reverse_geocode_with_amap(latitude, longitude)
+        provider = "amap" if address else ""
+    except Exception:
+        address = ""
+
+    if not address:
+        try:
+            address = reverse_geocode_with_osm(latitude, longitude)
+            provider = "osm" if address else ""
+        except Exception:
+            address = ""
+
+    if not address:
+        return jsonify({
+            "ok": False,
+            "error": "暂时没能识别出文字地址，请手动补充小区、楼号或门牌。",
+        }), 502
+
+    return jsonify({
+        "ok": True,
+        "address": address,
+        "provider": provider,
+        "latitude": latitude,
+        "longitude": longitude,
+    })
 
 
 @app.route("/appointment-qr")

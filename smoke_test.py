@@ -57,6 +57,13 @@ def main():
     assert qr_page.status_code == 200 and "客户预约链接".encode("utf-8") in qr_page.data
     qr_png = client.get("/appointment-qr.png")
     assert qr_png.status_code == 200 and qr_png.data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert "预约二维码".encode("utf-8") in client.get("/admin").data
+
+    reverse_bad = client.post("/api/reverse-geocode", json={"latitude": "bad", "longitude": "bad"})
+    assert reverse_bad.status_code == 400
+    submit_page = client.get("/submit")
+    assert submit_page.status_code == 200
+    assert "自动定位".encode("utf-8") in submit_page.data
 
     conn = sqlite3.connect(DATABASE)
     order_row = conn.execute(

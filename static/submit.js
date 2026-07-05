@@ -6,20 +6,22 @@
 
   function fillFallback(latitude, longitude) {
     var address = document.querySelector("#addressInput");
-    var mapLink = "https://uri.amap.com/marker?position=" + longitude + "," + latitude + "&name=客户定位";
-    if (address) {
-      address.value = "客户定位：" + latitude.toFixed(6) + "," + longitude.toFixed(6) + " " + mapLink;
-      address.dispatchEvent(new Event("input", { bubbles: true }));
+    if (address && !address.value.trim()) {
+      address.value = "";
     }
-    setTip("已填入定位坐标和地图链接，老板可复制打开查看。");
+    setTip("已拿到定位，但暂时没识别出文字地址。请手动填写小区、楼号、门牌，避免后台出现坐标。");
   }
 
   async function reverseGeocode(latitude, longitude) {
-    var url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=zh-CN&lat=" + latitude + "&lon=" + longitude;
-    var response = await fetch(url, { cache: "no-store" });
+    var response = await fetch("/api/reverse-geocode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latitude: latitude, longitude: longitude }),
+      cache: "no-store"
+    });
     if (!response.ok) throw new Error("reverse geocode failed");
     var data = await response.json();
-    return data.display_name || "";
+    return data.ok ? (data.address || "") : "";
   }
 
   document.addEventListener("DOMContentLoaded", function () {
