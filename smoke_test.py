@@ -51,6 +51,8 @@ def main():
     assert "new-badge".encode("utf-8") in login.data
     assert "开启声音提醒".encode("utf-8") in login.data
     assert "开启通知提醒".encode("utf-8") in login.data
+    assert "手机值守模式".encode("utf-8") in login.data
+    assert "watchOverlay".encode("utf-8") in login.data
     assert "有新的客户预约，请尽快联系".encode("utf-8") in login.data
 
     api_orders = client.get("/api/orders")

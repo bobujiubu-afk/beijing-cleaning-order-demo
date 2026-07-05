@@ -9,9 +9,12 @@
   var soundBurstTimer = null;
   var soundEnabled = localStorage.getItem("dongkeSoundEnabled") === "1";
   var notificationEnabled = localStorage.getItem("dongkeNotificationEnabled") === "1";
+  var watchModeEnabled = localStorage.getItem("dongkeWatchModeEnabled") === "1" || new URLSearchParams(window.location.search).get("reminder_mode") === "1";
   var audioContext = null;
   var defaultIconHref = null;
   var soundFile = "/static/sounds/new-order.wav";
+  var alarmRepeatTimer = null;
+  var wakeLock = null;
 
   function qs(selector) {
     return document.querySelector(selector);
@@ -108,14 +111,14 @@
     });
   }
 
-  function playNewOrderSound() {
+  function playNewOrderSound(force) {
     if (!soundEnabled) {
       setStatus("浏览器限制自动播放，请先点击“开启声音提醒”。", true);
       return;
     }
 
     var now = Date.now();
-    if (now - lastSoundAt < 8000) return;
+    if (!force && now - lastSoundAt < 8000) return;
     lastSoundAt = now;
 
     if (soundBurstTimer) window.clearInterval(soundBurstTimer);
@@ -136,6 +139,37 @@
     } catch (error) {
       setStatus("浏览器限制自动播放，请再点一次“开启声音提醒”。", true);
     }
+  }
+
+  function acquireWakeLock() {
+    if (!("wakeLock" in navigator) || !navigator.wakeLock.request) return;
+    navigator.wakeLock.request("screen")
+      .then(function (lock) {
+        wakeLock = lock;
+        wakeLock.addEventListener("release", function () {
+          wakeLock = null;
+        });
+      })
+      .catch(function () {});
+  }
+
+  function enableWatchMode() {
+    watchModeEnabled = true;
+    localStorage.setItem("dongkeWatchModeEnabled", "1");
+    soundEnabled = true;
+    localStorage.setItem("dongkeSoundEnabled", "1");
+    ensureAudioContext();
+    acquireWakeLock();
+    playSingleNewOrderSound();
+    updateWatchButton();
+    setStatus("手机值守模式已开启：请保持此后台页面打开，来单会全屏提醒并重复响铃。", false);
+  }
+
+  function updateWatchButton() {
+    var button = qs("#watchModeButton");
+    if (!button) return;
+    button.textContent = watchModeEnabled ? "手机值守模式已开启" : "开启手机值守模式";
+    button.classList.toggle("secondary-action", watchModeEnabled);
   }
 
   function requestNotificationPermission() {
@@ -193,9 +227,14 @@
       service_type: "开荒保洁",
       phone: "13800000000"
     };
-    showMessageAlert({ pending_count: Number(qs("#waitingCount") ? qs("#waitingCount").textContent : 1) || 1 });
+    var data = {
+      pending_count: Number(qs("#waitingCount") ? qs("#waitingCount").textContent : 1) || 1,
+      latest_order: testOrder
+    };
+    showMessageAlert(data);
+    showWatchOverlay(data);
     startTitleFlash();
-    playNewOrderSound();
+    playNewOrderSound(true);
     showNewOrderNotification(testOrder);
     setStatus("已触发测试提醒：应出现提示音、震动、标题闪烁和通知。", false);
   }
@@ -300,10 +339,44 @@
     if (box) box.classList.add("hidden");
   }
 
+  function showWatchOverlay(data) {
+    var overlay = qs("#watchOverlay");
+    if (!overlay) return;
+    var order = data && data.latest_order ? data.latest_order : {};
+    var text = [order.customer_name || "新客户", order.service_type || "预约服务", order.phone || ""].filter(Boolean).join("｜");
+    setText("#watchOrderText", text || "请尽快联系客户");
+    overlay.classList.remove("hidden");
+    document.body.classList.add("watch-alerting");
+    startRepeatingAlarm();
+  }
+
+  function hideWatchOverlay() {
+    var overlay = qs("#watchOverlay");
+    if (overlay) overlay.classList.add("hidden");
+    document.body.classList.remove("watch-alerting");
+    stopRepeatingAlarm();
+  }
+
+  function startRepeatingAlarm() {
+    if (!watchModeEnabled || alarmRepeatTimer) return;
+    alarmRepeatTimer = window.setInterval(function () {
+      playNewOrderSound(true);
+      vibrateReminder();
+    }, 10000);
+  }
+
+  function stopRepeatingAlarm() {
+    if (alarmRepeatTimer) {
+      window.clearInterval(alarmRepeatTimer);
+      alarmRepeatTimer = null;
+    }
+  }
+
   function handleNewOrder(data) {
     showMessageAlert(data);
+    showWatchOverlay(data);
     startTitleFlash();
-    playNewOrderSound();
+    playNewOrderSound(true);
     showNewOrderNotification(data.latest_order);
   }
 
@@ -433,6 +506,16 @@
     var testButton = qs("#testReminderButton");
     if (testButton) testButton.addEventListener("click", testReminder);
 
+    var watchButton = qs("#watchModeButton");
+    if (watchButton) {
+      watchButton.addEventListener("click", enableWatchMode);
+      updateWatchButton();
+      if (watchModeEnabled) {
+        acquireWakeLock();
+        setStatus("手机值守模式已开启，请保持后台页面打开。", false);
+      }
+    }
+
     var notificationButton = qs("#enableNotificationButton");
     if (notificationButton) {
       if (!("Notification" in window)) {
@@ -450,12 +533,25 @@
     if (dismissButton) {
       dismissButton.addEventListener("click", function () {
         hideMessageAlert();
+        hideWatchOverlay();
         stopTitleFlash();
       });
     }
 
     var viewButton = qs("#viewPendingButton");
     if (viewButton) viewButton.addEventListener("click", viewPendingOrders);
+
+    var watchDismissButton = qs("#watchDismissButton");
+    if (watchDismissButton) {
+      watchDismissButton.addEventListener("click", function () {
+        hideWatchOverlay();
+        hideMessageAlert();
+        stopTitleFlash();
+      });
+    }
+
+    var watchViewButton = qs("#watchViewButton");
+    if (watchViewButton) watchViewButton.addEventListener("click", viewPendingOrders);
 
     document.addEventListener("change", function (event) {
       var target = event.target;
@@ -487,9 +583,11 @@
   window.addEventListener("beforeunload", function () {
     if (titleTimer) window.clearInterval(titleTimer);
     if (soundBurstTimer) window.clearInterval(soundBurstTimer);
+    stopRepeatingAlarm();
   });
 
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && soundEnabled) ensureAudioContext();
+    if (!document.hidden && watchModeEnabled) acquireWakeLock();
   });
 })();

@@ -27,11 +27,24 @@
     <div class="settings-panel hidden" id="reminderSettingsPanel">
       <button class="ghost-button" type="button" id="enableSoundButton">开启声音提醒</button>
       <button class="ghost-button" type="button" id="enableNotificationButton">开启通知提醒</button>
+      <button class="primary-button" type="button" id="watchModeButton">开启手机值守模式</button>
       <button class="ghost-button" type="button" id="testReminderButton">测试来单提醒</button>
-      <p>首次使用先开启声音和通知，再点测试来单提醒。手机建议添加到主屏幕后使用，来单时更容易弹出提醒和角标。</p>
+      <p>手机端建议开启值守模式并保持后台页面打开；系统通知受手机浏览器限制，网页全屏提醒更稳定。</p>
     </div>
   </div>
   <p class="reminder-status" id="reminderStatus" aria-live="polite"></p>
+</section>
+
+<section class="watch-overlay hidden" id="watchOverlay" role="alertdialog" aria-live="assertive">
+  <div class="watch-card">
+    <span class="watch-bell">!</span>
+    <strong>有新的客户预约</strong>
+    <p id="watchOrderText">请尽快联系客户</p>
+    <div class="watch-actions">
+      <button class="primary-button" type="button" id="watchViewButton">查看待联系订单</button>
+      <button class="ghost-button" type="button" id="watchDismissButton">我知道了</button>
+    </div>
+  </div>
 </section>
 
 <section class="metric-row compact admin-metrics" id="adminMetrics">
