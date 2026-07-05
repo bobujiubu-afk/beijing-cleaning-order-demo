@@ -1,4 +1,15 @@
 (function () {
+  var normalTitle = "北京东科订单后台";
+  var newTitle = "【新订单】北京东科订单后台";
+  var lastSeenOrderId = null;
+  var lastSeenNewCount = null;
+  var titleTimer = null;
+  var titleFlashOn = false;
+  var lastSoundAt = 0;
+  var soundEnabled = localStorage.getItem("dongkeSoundEnabled") === "1";
+  var notificationEnabled = localStorage.getItem("dongkeNotificationEnabled") === "1";
+  var audioContext = null;
+
   function qs(selector) {
     return document.querySelector(selector);
   }
@@ -6,6 +17,13 @@
   function setText(selector, value) {
     var node = qs(selector);
     if (node) node.textContent = value;
+  }
+
+  function setStatus(message, warning) {
+    var node = qs("#reminderStatus");
+    if (!node) return;
+    node.textContent = message || "";
+    node.classList.toggle("warning", Boolean(warning));
   }
 
   function updateCounts(data) {
@@ -19,6 +37,11 @@
     setText("#waitingCount", data.counts && data.counts["待联系"] ? data.counts["待联系"] : 0);
     setText("#contactedCount", data.counts && data.counts["已联系"] ? data.counts["已联系"] : 0);
     setText("#dealedCount", data.counts && data.counts["已成交"] ? data.counts["已成交"] : 0);
+
+    if (pending === 0) {
+      stopTitleFlash();
+      hideMessageAlert();
+    }
   }
 
   function isEditing() {
@@ -27,6 +50,157 @@
       return true;
     }
     return Boolean(document.querySelector(".order-detail[open]"));
+  }
+
+  function ensureAudioContext() {
+    var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!audioContext) audioContext = new AudioContextClass();
+    if (audioContext.state === "suspended") audioContext.resume().catch(function () {});
+    return audioContext;
+  }
+
+  function beepFallback() {
+    var context = ensureAudioContext();
+    if (!context) {
+      setStatus("当前浏览器不支持声音提醒。", true);
+      return;
+    }
+
+    var oscillator = context.createOscillator();
+    var gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.8);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.85);
+  }
+
+  function playNewOrderSound() {
+    if (!soundEnabled) {
+      setStatus("浏览器限制自动播放，请先点击“开启声音提醒”。", true);
+      return;
+    }
+
+    var now = Date.now();
+    if (now - lastSoundAt < 3000) return;
+    lastSoundAt = now;
+
+    var audio = new Audio("/static/sounds/new-order.mp3");
+    audio.preload = "auto";
+    audio.volume = 0.85;
+
+    audio.play().catch(function () {
+      try {
+        beepFallback();
+      } catch (error) {
+        setStatus("声音被浏览器拦截，请点击“开启声音提醒”。", true);
+      }
+    });
+  }
+
+  function enableSoundAlert() {
+    soundEnabled = true;
+    localStorage.setItem("dongkeSoundEnabled", "1");
+    try {
+      beepFallback();
+      setStatus("声音提醒已开启。", false);
+    } catch (error) {
+      setStatus("浏览器限制自动播放，请再点一次“开启声音提醒”。", true);
+    }
+  }
+
+  function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+      setStatus("当前浏览器不支持系统通知。", true);
+      var button = qs("#enableNotificationButton");
+      if (button) button.hidden = true;
+      return;
+    }
+
+    Notification.requestPermission().then(function (permission) {
+      notificationEnabled = permission === "granted";
+      localStorage.setItem("dongkeNotificationEnabled", notificationEnabled ? "1" : "0");
+      setStatus(notificationEnabled ? "系统通知提醒已开启。" : "系统通知未授权。", !notificationEnabled);
+    });
+  }
+
+  function showNewOrderNotification(order) {
+    if (!notificationEnabled || !("Notification" in window) || Notification.permission !== "granted" || !order) {
+      return;
+    }
+
+    var body = [order.customer_name, order.service_type, order.phone].filter(Boolean).join("｜");
+    var notification = new Notification("北京东科保洁有新订单", {
+      body: body,
+      tag: "dongke-new-order-" + order.id,
+      renotify: true
+    });
+
+    notification.onclick = function () {
+      window.focus();
+      window.location.href = "/admin?status=待联系";
+      notification.close();
+    };
+  }
+
+  function startTitleFlash() {
+    if (titleTimer) return;
+    titleFlashOn = true;
+    document.title = newTitle;
+    titleTimer = window.setInterval(function () {
+      titleFlashOn = !titleFlashOn;
+      document.title = titleFlashOn ? newTitle : normalTitle;
+    }, 900);
+  }
+
+  function stopTitleFlash() {
+    if (titleTimer) {
+      window.clearInterval(titleTimer);
+      titleTimer = null;
+    }
+    document.title = normalTitle;
+  }
+
+  function showMessageAlert(data) {
+    var box = qs("#newMessageAlert");
+    if (!box) return;
+    box.classList.remove("hidden");
+    setText("#newMessageText", "当前有 " + (data.pending_count || 0) + " 个待联系客户");
+  }
+
+  function hideMessageAlert() {
+    var box = qs("#newMessageAlert");
+    if (box) box.classList.add("hidden");
+  }
+
+  function handleNewOrder(data) {
+    showMessageAlert(data);
+    startTitleFlash();
+    playNewOrderSound();
+    showNewOrderNotification(data.latest_order);
+  }
+
+  function maybeTriggerReminder(data) {
+    var latestId = Number(data.latest_order_id || 0);
+    var newCount = Number(data.new_count || 0);
+
+    if (lastSeenOrderId === null) {
+      lastSeenOrderId = latestId;
+      lastSeenNewCount = newCount;
+      return;
+    }
+
+    if (latestId > lastSeenOrderId || newCount > lastSeenNewCount) {
+      handleNewOrder(data);
+    }
+
+    lastSeenOrderId = Math.max(lastSeenOrderId, latestId);
+    lastSeenNewCount = newCount;
   }
 
   function refreshOrders() {
@@ -42,6 +216,7 @@
       })
       .then(function (data) {
         updateCounts(data);
+        maybeTriggerReminder(data);
         if (!isEditing() && typeof data.html === "string") {
           list.innerHTML = data.html;
         }
@@ -51,7 +226,21 @@
       });
   }
 
+  function viewPendingOrders() {
+    hideMessageAlert();
+    stopTitleFlash();
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("status") !== "待联系") {
+      window.location.href = "/admin?status=待联系";
+      return;
+    }
+    var list = qs("#orderList");
+    if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    document.title = normalTitle;
+
     var filterButton = qs(".filter-toggle");
     var filters = qs("#adminFilters");
     if (filterButton && filters) {
@@ -61,8 +250,43 @@
       });
     }
 
+    var soundButton = qs("#enableSoundButton");
+    if (soundButton) {
+      soundButton.addEventListener("click", enableSoundAlert);
+      if (soundEnabled) setStatus("声音提醒已开启，如不响请再点一次按钮。", false);
+    }
+
+    var notificationButton = qs("#enableNotificationButton");
+    if (notificationButton) {
+      if (!("Notification" in window)) {
+        notificationButton.hidden = true;
+      } else {
+        notificationButton.addEventListener("click", requestNotificationPermission);
+        if (notificationEnabled && Notification.permission !== "granted") {
+          localStorage.setItem("dongkeNotificationEnabled", "0");
+          notificationEnabled = false;
+        }
+      }
+    }
+
+    var dismissButton = qs("#dismissReminderButton");
+    if (dismissButton) {
+      dismissButton.addEventListener("click", function () {
+        hideMessageAlert();
+        stopTitleFlash();
+      });
+    }
+
+    var viewButton = qs("#viewPendingButton");
+    if (viewButton) viewButton.addEventListener("click", viewPendingOrders);
+
     if (qs("#orderList")) {
+      refreshOrders();
       window.setInterval(refreshOrders, 5000);
     }
+  });
+
+  window.addEventListener("beforeunload", function () {
+    if (titleTimer) window.clearInterval(titleTimer);
   });
 })();

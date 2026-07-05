@@ -149,6 +149,54 @@ def get_order_counts():
     return counts
 
 
+def order_summary(order):
+    if not order:
+        return None
+    return {
+        "id": order["id"],
+        "order_no": order["order_no"],
+        "created_at": order["created_at"],
+        "updated_at": order["updated_at"] or order["created_at"],
+        "customer_name": order["customer_name"],
+        "phone": order["phone"],
+        "service_type": order["service_type"],
+        "address": order["address"],
+        "status": normalize_status(order["status"]),
+        "is_new": int(order["is_new"] or 0),
+    }
+
+
+def get_latest_new_order():
+    conn = get_db()
+    row = conn.execute(
+        f"""
+        SELECT * FROM orders
+        WHERE deleted_at IS NULL AND status = '待联系'
+        ORDER BY
+            COALESCE(NULLIF(updated_at, ''), created_at) DESC,
+            created_at DESC,
+            id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    conn.close()
+    return order_summary(normalize_order_row(row)) if row else None
+
+
+def order_count_payload():
+    counts = get_order_counts()
+    latest_order = get_latest_new_order()
+    return {
+        "counts": counts,
+        "pending_count": counts["待联系"],
+        "new_count": counts["待联系"],
+        "today_new": count_today_orders(),
+        "latest_order_id": latest_order["id"] if latest_order else 0,
+        "latest_order_time": latest_order["created_at"] if latest_order else "",
+        "latest_order": latest_order,
+    }
+
+
 def count_today_orders():
     today = datetime.now().strftime("%Y-%m-%d")
     conn = get_db()
@@ -606,12 +654,7 @@ def admin():
 def api_order_counts():
     if not require_admin():
         return jsonify({"error": "unauthorized"}), 401
-    counts = get_order_counts()
-    return jsonify({
-        "counts": counts,
-        "pending_count": counts["待联系"],
-        "today_new": count_today_orders(),
-    })
+    return jsonify(order_count_payload())
 
 
 @app.route("/api/orders")
@@ -625,16 +668,14 @@ def api_orders():
         "keyword": request.args.get("keyword", "").strip(),
     }
     orders = get_orders(filters)
-    counts = get_order_counts()
+    payload = order_count_payload()
     latest_updated_at = max((order["updated_at"] or order["created_at"] for order in orders), default="")
-    return jsonify({
-        "counts": counts,
-        "pending_count": counts["待联系"],
-        "today_new": count_today_orders(),
+    payload.update({
         "latest_updated_at": latest_updated_at,
         "html": render_template("_order_cards.html", orders=orders),
         "summary": summarize_orders(orders),
     })
+    return jsonify(payload)
 
 
 @app.route("/orders/<int:order_id>/update", methods=["POST"])

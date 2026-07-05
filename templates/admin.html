@@ -1,6 +1,17 @@
 {% extends "base.html" %}
-{% block title %}老板后台 - 北京东科保洁{% endblock %}
+{% block title %}北京东科订单后台{% endblock %}
 {% block content %}
+<section class="new-message-alert hidden" id="newMessageAlert" role="alert">
+  <div>
+    <strong>有新的客户预约，请尽快联系！</strong>
+    <p id="newMessageText">当前有 {{ waiting }} 个待联系客户</p>
+  </div>
+  <div class="reminder-actions">
+    <button class="primary-button" type="button" id="viewPendingButton">查看待联系订单</button>
+    <button class="ghost-button" type="button" id="dismissReminderButton">我知道了</button>
+  </div>
+</section>
+
 <section class="new-order-alert {% if waiting > 0 %}has-new{% endif %}" id="newOrderAlert">
   <div>
     <span class="red-dot {% if waiting == 0 %}hidden{% endif %}" id="pendingDot"></span>
@@ -9,6 +20,11 @@
     </strong>
     <p>新订单和待联系订单会自动排在最上方，处理后小红点自动消失。</p>
   </div>
+  <div class="reminder-actions">
+    <button class="ghost-button" type="button" id="enableSoundButton">开启声音提醒</button>
+    <button class="ghost-button" type="button" id="enableNotificationButton">开启通知提醒</button>
+  </div>
+  <p class="reminder-status" id="reminderStatus" aria-live="polite"></p>
 </section>
 
 <section class="page-heading admin-heading">

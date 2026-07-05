@@ -367,6 +367,35 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+.new-message-alert {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  color: #7a2600;
+  background: #fff0df;
+  border: 1px solid #f0a25d;
+  border-radius: 8px;
+  box-shadow: 0 16px 38px rgba(122, 38, 0, 0.14);
+}
+
+.new-message-alert.hidden {
+  display: none;
+}
+
+.new-message-alert strong {
+  display: block;
+  font-size: 21px;
+}
+
+.new-message-alert p {
+  margin: 6px 0 0;
+  color: #7a4a2d;
+  font-weight: 700;
+}
+
 .new-order-alert.has-new {
   border-color: rgba(184, 50, 50, 0.35);
   background: #fff7f7;
@@ -382,6 +411,25 @@ textarea {
 .new-order-alert p {
   margin: 6px 0 0;
   color: var(--muted);
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.reminder-status {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reminder-status.warning {
+  color: #9a3d00;
 }
 
 .red-dot {
@@ -745,6 +793,7 @@ textarea {
   .page-heading,
   .order-main,
   .export-item,
+  .new-message-alert,
   .new-order-alert {
     display: block;
   }
@@ -759,6 +808,24 @@ textarea {
 
   .new-order-alert strong {
     font-size: 18px;
+  }
+
+  .new-message-alert {
+    padding: 14px;
+  }
+
+  .new-message-alert.hidden {
+    display: none;
+  }
+
+  .new-message-alert strong {
+    font-size: 18px;
+  }
+
+  .reminder-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin-top: 10px;
   }
 
   .heading-actions {

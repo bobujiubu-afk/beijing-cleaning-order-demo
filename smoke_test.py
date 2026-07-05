@@ -14,6 +14,8 @@ def main():
 
     admin = client.get("/admin", follow_redirects=False)
     assert admin.status_code == 200 and "老板后台登录".encode("utf-8") in admin.data
+    assert client.get("/api/orders").status_code == 401
+    assert client.get("/api/order-counts").status_code == 401
 
     bad = client.post("/submit", data={"customer_name": "", "phone": "", "address": ""})
     assert bad.status_code == 400
@@ -43,11 +45,17 @@ def main():
     assert "已完成".encode("utf-8") not in login.data
     assert "phone-link".encode("utf-8") in login.data
     assert "new-badge".encode("utf-8") in login.data
+    assert "开启声音提醒".encode("utf-8") in login.data
+    assert "开启通知提醒".encode("utf-8") in login.data
+    assert "有新的客户预约，请尽快联系".encode("utf-8") in login.data
 
     api_orders = client.get("/api/orders")
     assert api_orders.status_code == 200
     api_data = api_orders.get_json()
     assert api_data["pending_count"] >= 3
+    assert api_data["new_count"] >= 3
+    assert api_data["latest_order_id"] > 0
+    assert api_data["latest_order"]["customer_name"] == "测试客户自测三"
     assert "测试客户自测三" in api_data["html"]
     assert api_data["html"].find("测试客户自测三") < api_data["html"].find("测试客户自测二")
     assert "已报价" not in api_data["html"]
