@@ -104,6 +104,19 @@ $env:ADMIN_PASSWORD="你的新密码"
 
 正式部署到服务器时也必须设置 `ADMIN_PASSWORD`，不要用默认密码。
 
+## 客户端和老板端安全边界
+
+系统现在把客户预约端和老板后台端分开处理：
+
+- 客户端公开页面只开放 `/submit`、`/submit/success` 和 `/submit/reverse-geocode`。
+- 老板后台 `/admin`、订单 API `/api/orders`、`/api/order-counts`、订单修改、Excel 导出、数据库备份都必须先登录。
+- 后台和 API 响应会设置 `Cache-Control: no-store`，避免订单数据被浏览器缓存。
+- 后台页面带 `X-Robots-Tag: noindex, nofollow`，避免被搜索引擎收录。
+- 登录失败 5 次会临时锁定 10 分钟，减少暴力猜密码风险。
+- 登录会话使用 HttpOnly Cookie，普通页面脚本不能直接读取后台登录 Cookie。
+
+真实交付客户前，建议把 `ADMIN_PASSWORD` 改成强密码，并把 `SECRET_KEY` 设置成随机长字符串。低价演示版可以先用单老板密码，正式商用最好升级为独立账号、操作日志和更严格权限。
+
 ## 数据备份
 
 老板后台右上角可以点击“备份数据库”，下载完整的 `database.db`。

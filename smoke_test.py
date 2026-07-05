@@ -14,6 +14,8 @@ def main():
 
     admin = client.get("/admin", follow_redirects=False)
     assert admin.status_code == 200 and "老板后台登录".encode("utf-8") in admin.data
+    assert "默认演示密码".encode("utf-8") not in admin.data
+    assert admin.headers["Cache-Control"].startswith("no-store")
     assert client.get("/api/orders").status_code == 401
     assert client.get("/api/order-counts").status_code == 401
 
@@ -67,7 +69,7 @@ def main():
     assert qr_png.status_code == 200 and qr_png.data[:8] == b"\x89PNG\r\n\x1a\n"
     assert "预约二维码".encode("utf-8") in client.get("/admin").data
 
-    reverse_bad = client.post("/api/reverse-geocode", json={"latitude": "bad", "longitude": "bad"})
+    reverse_bad = client.post("/submit/reverse-geocode", json={"latitude": "bad", "longitude": "bad"})
     assert reverse_bad.status_code == 400
     submit_page = client.get("/submit")
     assert submit_page.status_code == 200

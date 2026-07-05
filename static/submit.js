@@ -13,7 +13,7 @@
   }
 
   async function reverseGeocode(latitude, longitude) {
-    var response = await fetch("/api/reverse-geocode", {
+    var response = await fetch("/submit/reverse-geocode", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ latitude: latitude, longitude: longitude }),

@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import hmac
 from io import BytesIO
 import os
 import re
 import sqlite3
+import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -60,12 +62,44 @@ FOLLOW_UP_STATUSES = ["未回访", "已回访", "有复购意向", "无复购意
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-before-online")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+)
+
+LOGIN_ATTEMPTS = {}
+MAX_LOGIN_FAILURES = 5
+LOGIN_LOCK_SECONDS = 600
 
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    protected_prefixes = (
+        "/admin",
+        "/api/",
+        "/orders/",
+        "/stats",
+        "/export",
+        "/exports",
+        "/backup",
+        "/appointment-qr",
+        "/login",
+    )
+    if request.path.startswith(protected_prefixes):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
 
 
 def init_db():
@@ -362,6 +396,38 @@ def require_admin():
     return session.get("admin_logged_in") is True
 
 
+def client_ip_key():
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def login_lock_remaining():
+    record = LOGIN_ATTEMPTS.get(client_ip_key())
+    if not record:
+        return 0
+    locked_until = record.get("locked_until", 0)
+    remaining = int(locked_until - time.time())
+    if remaining <= 0:
+        if locked_until:
+            LOGIN_ATTEMPTS.pop(client_ip_key(), None)
+        return 0
+    return remaining
+
+
+def record_login_failure():
+    key = client_ip_key()
+    record = LOGIN_ATTEMPTS.setdefault(key, {"count": 0, "locked_until": 0})
+    record["count"] += 1
+    if record["count"] >= MAX_LOGIN_FAILURES:
+        record["locked_until"] = time.time() + LOGIN_LOCK_SECONDS
+
+
+def clear_login_failures():
+    LOGIN_ATTEMPTS.pop(client_ip_key(), None)
+
+
 def validate_choice(value, options, default):
     return value if value in options else default
 
@@ -546,7 +612,7 @@ def submit_success():
     return render_template("submit_success.html", public_page=True)
 
 
-@app.route("/api/reverse-geocode", methods=["POST"])
+@app.route("/submit/reverse-geocode", methods=["POST"])
 def api_reverse_geocode():
     payload = request.get_json(silent=True) or {}
     try:
@@ -609,10 +675,20 @@ def appointment_qr_png():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form.get("password", "") == ADMIN_PASSWORD:
+        remaining = login_lock_remaining()
+        if remaining:
+            minutes = max(1, remaining // 60)
+            flash(f"密码错误次数过多，请约 {minutes} 分钟后再试。", "error")
+            return render_template("login.html"), 429
+
+        password = request.form.get("password", "")
+        if hmac.compare_digest(password, ADMIN_PASSWORD):
+            clear_login_failures()
+            session.permanent = True
             session["admin_logged_in"] = True
             flash("已进入老板后台。", "success")
             return redirect(url_for("admin"))
+        record_login_failure()
         flash("后台密码不正确。", "error")
     return render_template("login.html")
 
