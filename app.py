@@ -421,7 +421,7 @@ def logout():
 @app.route("/admin")
 def admin():
     if not require_admin():
-        return redirect(url_for("login"))
+        return render_template("login.html")
     filters = {
         "status": request.args.get("status", "").strip(),
         "service_type": request.args.get("service_type", "").strip(),

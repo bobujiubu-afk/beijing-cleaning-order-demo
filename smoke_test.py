@@ -13,7 +13,7 @@ def main():
     client = app.test_client()
 
     admin = client.get("/admin", follow_redirects=False)
-    assert admin.status_code == 302 and "/login" in admin.headers["Location"]
+    assert admin.status_code == 200 and "老板后台登录".encode("utf-8") in admin.data
 
     bad = client.post("/submit", data={"customer_name": "", "phone": "", "address": ""})
     assert bad.status_code == 400
