@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}数据统计 - 北京东科保洁{% endblock %}
+{% block title %}统计 - 北京东科保洁接单本{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <p class="eyebrow">本月经营看板</p>
-    <h1>数据统计</h1>
-    <p>一眼看清订单数量、订单金额、服务类型和客户来源。</p>
+    <p class="eyebrow">接单本统计</p>
+    <h1>这个月干了多少活</h1>
+    <p>看看本月完成多少单、收了多少钱、哪些活最多。</p>
   </div>
-  <a class="primary-button" href="{{ url_for('admin') }}">查看订单</a>
+  <a class="primary-button" href="{{ url_for('admin') }}">回到今天的活</a>
 </section>
 
 <section class="metric-row">
-  <div class="metric"><span>总订单数</span><strong>{{ data.total }}</strong></div>
+  <div class="metric"><span>全部记录</span><strong>{{ data.total }}</strong></div>
   <div class="metric"><span>待联系</span><strong>{{ data.waiting }}</strong></div>
-  <div class="metric"><span>已联系</span><strong>{{ data.contacted }}</strong></div>
-  <div class="metric"><span>已成交</span><strong>{{ data.dealed }}</strong></div>
+  <div class="metric"><span>已约好</span><strong>{{ data.contacted }}</strong></div>
+  <div class="metric"><span>已完成</span><strong>{{ data.dealed }}</strong></div>
   <div class="metric"><span>已取消</span><strong>{{ data.canceled }}</strong></div>
-  <div class="metric highlight"><span>本月订单</span><strong>{{ data.month_total }}</strong></div>
-  <div class="metric highlight"><span>本月成交</span><strong>{{ data.month_dealed }}</strong></div>
-  <div class="metric highlight"><span>本月订单金额</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
+  <div class="metric highlight"><span>本月记录</span><strong>{{ data.month_total }}</strong></div>
+  <div class="metric highlight"><span>本月完成</span><strong>{{ data.month_dealed }}</strong></div>
+  <div class="metric highlight"><span>本月收款</span><strong>¥{{ "%.0f"|format(data.month_amount) }}</strong></div>
 </section>
 
 <section class="panel data-tools">
-  <h2>数据工具</h2>
+  <h2>导出和备份</h2>
   <p class="path-note">导出和备份统一放在这里。手机如果无法直接下载，请使用电脑端导出。</p>
   <div class="tool-actions">
     <a class="primary-button" href="{{ url_for('export_excel') }}">导出 Excel</a>
@@ -33,7 +33,7 @@
 
 <section class="chart-grid">
   <div class="panel">
-    <h2>预约日期统计</h2>
+    <h2>按日期看活</h2>
     {% for item in date_counts %}
     <div class="bar-row">
       <span>{{ item.appointment_date }}</span>
@@ -43,7 +43,7 @@
     {% endfor %}
   </div>
   <div class="panel">
-    <h2>各服务类型订单数量</h2>
+    <h2>哪些服务做得多</h2>
     {% for item in service_counts %}
     <div class="bar-row">
       <span>{{ item.service_type }}</span>
@@ -53,7 +53,7 @@
     {% endfor %}
   </div>
   <div class="panel">
-    <h2>各客户来源订单数量</h2>
+    <h2>客户从哪来</h2>
     {% for item in source_counts %}
     <div class="bar-row">
       <span>{{ item.source or "未填写" }}</span>

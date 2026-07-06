@@ -7,7 +7,7 @@ import re
 import sqlite3
 import time
 import base64
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -43,6 +43,7 @@ SERVICE_TYPES = [
 ]
 
 SOURCES = [
+    "微信沟通",
     "微信",
     "朋友圈",
     "小红书",
@@ -54,14 +55,23 @@ SOURCES = [
 ]
 
 APPOINTMENT_PERIODS = ["上午", "下午", "晚上", "具体时间电话沟通"]
-ORDER_STATUSES = ["待联系", "已联系", "已成交", "已取消"]
-LEGACY_STATUS_MAP = {"已报价": "已联系", "已完成": "已成交"}
+ORDER_STATUSES = ["待联系", "已约好", "已完成", "已取消"]
+LEGACY_STATUS_MAP = {"已联系": "已约好", "已报价": "已约好", "已成交": "已完成"}
 STATUS_ORDER_SQL = """
     CASE status
         WHEN '待联系' THEN 1
-        WHEN '已联系' THEN 2
-        WHEN '已成交' THEN 3
+        WHEN '已约好' THEN 2
+        WHEN '已完成' THEN 3
         WHEN '已取消' THEN 4
+        ELSE 5
+    END
+"""
+PERIOD_ORDER_SQL = """
+    CASE appointment_period
+        WHEN '上午' THEN 1
+        WHEN '下午' THEN 2
+        WHEN '晚上' THEN 3
+        WHEN '具体时间电话沟通' THEN 4
         ELSE 5
     END
 """
@@ -167,8 +177,8 @@ def init_db():
     ensure_column(conn, "orders", "appointment_date", "TEXT")
     ensure_column(conn, "orders", "appointment_period", "TEXT")
     ensure_column(conn, "orders", "amount", "REAL")
-    conn.execute("UPDATE orders SET status = '已联系' WHERE status = '已报价'")
-    conn.execute("UPDATE orders SET status = '已成交' WHERE status = '已完成'")
+    conn.execute("UPDATE orders SET status = '已约好' WHERE status IN ('已联系', '已报价')")
+    conn.execute("UPDATE orders SET status = '已完成' WHERE status = '已成交'")
     conn.execute("UPDATE orders SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''")
     conn.execute("UPDATE orders SET appointment_period = preferred_time WHERE (appointment_period IS NULL OR appointment_period = '') AND preferred_time IS NOT NULL AND preferred_time <> ''")
     conn.execute("UPDATE orders SET amount = deal_amount WHERE (amount IS NULL OR amount = 0) AND deal_amount IS NOT NULL AND deal_amount > 0")
@@ -359,6 +369,14 @@ def order_summary(order):
     }
 
 
+def amap_navigation_url(address):
+    address = clean_text(address, 200)
+    if not address:
+        return ""
+    keyword = address if "北京" in address else f"北京 {address}"
+    return "https://uri.amap.com/search?keyword=" + quote_plus(keyword)
+
+
 def get_latest_new_order():
     conn = get_db()
     row = conn.execute(
@@ -447,7 +465,7 @@ def seed_demo_data(force=False):
             "preferred_time": "明天下午",
             "need_invoice": "是",
             "source": "小红书",
-            "status": "已联系",
+            "status": "已约好",
             "quote_amount": 800,
             "deal_amount": 0,
             "owner": "王师傅",
@@ -463,7 +481,7 @@ def seed_demo_data(force=False):
             "preferred_time": "周五晚间",
             "need_invoice": "是",
             "source": "电话咨询",
-            "status": "已成交",
+            "status": "已完成",
             "quote_amount": 1200,
             "deal_amount": 1200,
             "owner": "刘师傅",
@@ -479,7 +497,7 @@ def seed_demo_data(force=False):
             "preferred_time": "已服务",
             "need_invoice": "否",
             "source": "熟人介绍",
-            "status": "已成交",
+            "status": "已完成",
             "quote_amount": 500,
             "deal_amount": 500,
             "owner": "李师傅",
@@ -495,7 +513,7 @@ def seed_demo_data(force=False):
             "preferred_time": "下周一",
             "need_invoice": "是",
             "source": "抖音",
-            "status": "已联系",
+            "status": "已约好",
             "quote_amount": 1800,
             "deal_amount": 0,
             "owner": "老板",
@@ -708,6 +726,7 @@ def get_orders(filters=None):
             {STATUS_ORDER_SQL} ASC,
             CASE WHEN appointment_date IS NULL OR appointment_date = '' THEN 1 ELSE 0 END ASC,
             appointment_date ASC,
+            {PERIOD_ORDER_SQL} ASC,
             CASE WHEN status = '待联系' THEN 1 ELSE COALESCE(is_new, 0) END DESC,
             COALESCE(NULLIF(updated_at, ''), created_at) DESC,
             created_at DESC,
@@ -763,13 +782,13 @@ def summarize_orders(orders):
         service_counts[order["service_type"]] = service_counts.get(order["service_type"], 0) + 1
         source = order["source"] or "未填写"
         source_counts[source] = source_counts.get(source, 0) + 1
-        if status == "已成交":
+        if status == "已完成":
             total_amount += money(order["amount"])
     return {
         "total": len(orders),
         "waiting": status_counts["待联系"],
-        "contacted": status_counts["已联系"],
-        "dealed": status_counts["已成交"],
+        "contacted": status_counts["已约好"],
+        "dealed": status_counts["已完成"],
         "canceled": status_counts["已取消"],
         "amount": total_amount,
         "service_counts": sorted(service_counts.items(), key=lambda item: item[1], reverse=True),
@@ -785,6 +804,7 @@ def inject_options():
         "appointment_periods": APPOINTMENT_PERIODS,
         "order_statuses": ORDER_STATUSES,
         "follow_up_statuses": FOLLOW_UP_STATUSES,
+        "amap_navigation_url": amap_navigation_url,
     }
 
 
@@ -842,6 +862,59 @@ def submit():
 @app.route("/submit/success")
 def submit_success():
     return render_template("submit_success.html", public_page=True)
+
+
+@app.route("/orders/create", methods=["POST"])
+def create_order():
+    if not require_admin():
+        return redirect(url_for("login"))
+    data = {
+        "customer_name": clean_text(request.form.get("customer_name"), 40) or "未填写姓名",
+        "phone": clean_text(request.form.get("phone"), 30),
+        "address": clean_text(request.form.get("address"), 160),
+        "service_type": validate_choice(request.form.get("service_type"), SERVICE_TYPES, SERVICE_TYPES[0]),
+        "area": clean_text(request.form.get("area"), 40),
+        "appointment_date": clean_text(request.form.get("appointment_date"), 20) or datetime.now().strftime("%Y-%m-%d"),
+        "appointment_period": validate_choice(request.form.get("appointment_period"), APPOINTMENT_PERIODS, APPOINTMENT_PERIODS[0]),
+        "amount": request.form.get("amount", ""),
+        "status": validate_choice(request.form.get("status"), ORDER_STATUSES, "已约好"),
+        "source": validate_choice(request.form.get("source"), SOURCES, "微信沟通"),
+        "remark": clean_text(request.form.get("remark"), 500) or "无",
+    }
+    current_time = now_text()
+    conn = get_db()
+    cursor = conn.execute(
+        """
+        INSERT INTO orders (
+            order_no, created_at, updated_at, is_new, customer_name, phone, address, service_type,
+            area, preferred_time, appointment_date, appointment_period, need_invoice, source, status, amount, quote_amount,
+            deal_amount, owner, follow_up_status, remark
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '否', ?, ?, ?, 0, 0, '', '未回访', ?)
+        """,
+        (
+            make_order_no(),
+            current_time,
+            current_time,
+            1 if data["status"] == "待联系" else 0,
+            data["customer_name"],
+            data["phone"],
+            data["address"],
+            data["service_type"],
+            data["area"],
+            data["appointment_date"] + " " + data["appointment_period"],
+            data["appointment_date"],
+            data["appointment_period"],
+            data["source"],
+            data["status"],
+            None if data["amount"] in (None, "") else money(data["amount"]),
+            data["remark"],
+        ),
+    )
+    conn.commit()
+    order_id = cursor.lastrowid
+    conn.close()
+    flash("已新增一单。", "success")
+    return redirect(url_for("admin", date_scope="today", focus=order_id))
 
 
 @app.route("/submit/reverse-geocode", methods=["POST"])
@@ -918,17 +991,17 @@ def login():
             clear_login_failures()
             session.permanent = True
             session["admin_logged_in"] = True
-            flash("已进入老板后台。", "success")
+            flash("已进入接单本。", "success")
             return redirect(url_for("admin"))
         record_login_failure()
-        flash("后台密码不正确。", "error")
+        flash("接单本密码不正确。", "error")
     return render_template("login.html")
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    flash("已退出后台。", "success")
+    flash("已退出接单本。", "success")
     return redirect(url_for("login"))
 
 
@@ -949,7 +1022,8 @@ def admin():
         waiting=counts["待联系"],
         filtered_summary=filtered_summary,
         deal_amount=filtered_summary["amount"],
-        page_label="老板后台",
+        today_date=datetime.now().strftime("%Y-%m-%d"),
+        page_label="今天的活",
     )
 
 
@@ -1110,21 +1184,21 @@ def stats():
 
     month_prefix = datetime.now().strftime("%Y-%m")
     current_month = [order for order in orders if order["created_at"].startswith(month_prefix)]
-    month_deals = [order for order in current_month if normalize_status(order["status"]) == "已成交"]
+    month_deals = [order for order in current_month if normalize_status(order["status"]) == "已完成"]
     status_counts = {status: 0 for status in ORDER_STATUSES}
     for order in orders:
         status_counts[normalize_status(order["status"])] += 1
     data = {
         "total": len(orders),
         "waiting": status_counts["待联系"],
-        "contacted": status_counts["已联系"],
-        "dealed": status_counts["已成交"],
+        "contacted": status_counts["已约好"],
+        "dealed": status_counts["已完成"],
         "canceled": status_counts["已取消"],
         "month_total": len(current_month),
         "month_dealed": len(month_deals),
-        "month_amount": sum(money(order["amount"]) for order in current_month),
+        "month_amount": sum(money(order["amount"]) for order in month_deals),
     }
-    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts, date_counts=date_counts, page_label="数据统计")
+    return render_template("stats.html", data=data, service_counts=service_counts, source_counts=source_counts, date_counts=date_counts, page_label="统计")
 
 
 @app.route("/export")
@@ -1135,38 +1209,36 @@ def export_excel():
     orders = get_orders(filters)
     wb = Workbook()
     ws = wb.active
-    ws.title = "预约订单"
+    ws.title = "接单本"
     headers = [
-        "订单编号",
-        "提交时间",
-        "预约日期",
-        "预约时间段",
         "客户姓名",
         "联系电话",
-        "服务地址",
+        "上门地址",
         "服务类型",
-        "房屋面积",
-        "订单状态",
+        "预约日期",
+        "预约时间段",
+        "面积/数量",
         "订单金额",
+        "状态",
         "客户来源",
         "备注",
+        "创建时间",
     ]
     ws.append(headers)
     for order in orders:
         ws.append([
-            order["order_no"],
-            order["created_at"],
-            order["appointment_date"] or "未填写日期",
-            order["appointment_period"] or "未填写时间段",
             order["customer_name"],
             order["phone"],
             order["address"],
             order["service_type"],
+            order["appointment_date"] or "未填写日期",
+            order["appointment_period"] or "未填写时间段",
             order["area"],
-            normalize_status(order["status"]),
             order["amount"],
+            normalize_status(order["status"]),
             order["source"],
             order["remark"],
+            order["created_at"],
         ])
 
     for column in ws.columns:

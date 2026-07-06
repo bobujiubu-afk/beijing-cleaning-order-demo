@@ -1,6 +1,6 @@
 (function () {
-  var normalTitle = "北京东科订单后台";
-  var newTitle = "【新订单】北京东科订单后台";
+  var normalTitle = "北京东科保洁接单本";
+  var newTitle = "【新客户】北京东科保洁接单本";
   var lastSeenOrderId = null;
   var lastSeenNewCount = null;
   var titleTimer = null;
@@ -40,8 +40,8 @@
     setText("#pendingMessage", pending > 0 ? "当前有 " + pending + " 个待联系客户" : "暂无待联系客户");
     setText("#todayNewCount", data.today_new || 0);
     setText("#waitingCount", data.counts && data.counts["待联系"] ? data.counts["待联系"] : 0);
-    setText("#contactedCount", data.counts && data.counts["已联系"] ? data.counts["已联系"] : 0);
-    setText("#dealedCount", data.counts && data.counts["已成交"] ? data.counts["已成交"] : 0);
+    setText("#contactedCount", data.counts && data.counts["已约好"] ? data.counts["已约好"] : 0);
+    setText("#dealedCount", data.counts && data.counts["已完成"] ? data.counts["已完成"] : 0);
 
     if (pending === 0) {
       stopTitleFlash();
@@ -464,9 +464,12 @@
 
   function updateDateTabState(params) {
     var scope = params.get("date_scope") || "today";
+    var status = params.get("status") || "";
     document.querySelectorAll(".date-tabs a").forEach(function (link) {
-      var linkScope = new URL(link.href, window.location.origin).searchParams.get("date_scope") || "today";
-      link.classList.toggle("active", linkScope === scope);
+      var linkParams = new URL(link.href, window.location.origin).searchParams;
+      var linkScope = linkParams.get("date_scope") || "today";
+      var linkStatus = linkParams.get("status") || "";
+      link.classList.toggle("active", linkStatus ? linkStatus === status : (linkScope === scope && !status));
     });
     var hiddenScope = qs("#adminFilters input[name='date_scope']");
     if (hiddenScope) hiddenScope.value = scope;
@@ -623,6 +626,11 @@
         var url = new URL(link.href, window.location.origin);
         var params = new URLSearchParams(window.location.search);
         params.set("date_scope", url.searchParams.get("date_scope") || "today");
+        if (url.searchParams.has("status")) {
+          params.set("status", url.searchParams.get("status"));
+        } else if (["today", "tomorrow", "week", "all"].indexOf(url.searchParams.get("date_scope")) !== -1) {
+          params.delete("status");
+        }
         params.delete("custom_date");
         replaceOrdersWithParams(params);
       });

@@ -5,9 +5,9 @@
   <div>
     <p class="eyebrow">Excel 导出</p>
     <h1>导出结果</h1>
-    <p>系统已把订单表保存到项目的 exports 文件夹，下面可以直接下载。</p>
+    <p>这次导出的表已经保存到项目的 exports 文件夹，下面可以直接下载。</p>
   </div>
-  <a class="primary-button" href="{{ url_for('admin') }}">返回后台</a>
+  <a class="primary-button" href="{{ url_for('admin') }}">回到今天的活</a>
 </section>
 
 <section class="panel">
@@ -31,7 +31,7 @@
 <section class="metric-row compact export-summary">
   <div class="metric"><span>导出订单数</span><strong>{{ summary.total }}</strong></div>
   <div class="metric"><span>待联系</span><strong>{{ summary.waiting }}</strong></div>
-  <div class="metric"><span>已联系</span><strong>{{ summary.contacted }}</strong></div>
+  <div class="metric"><span>已约好</span><strong>{{ summary.contacted }}</strong></div>
   <div class="metric"><span>订单金额</span><strong>¥{{ "%.0f"|format(summary.amount) }}</strong></div>
 </section>
 
@@ -64,31 +64,33 @@
     <table class="export-table">
       <thead>
         <tr>
-          <th>订单编号</th>
-          <th>提交时间</th>
-          <th>预约日期</th>
-          <th>时间段</th>
           <th>客户</th>
           <th>电话</th>
+          <th>地址</th>
           <th>服务</th>
-          <th>状态</th>
+          <th>预约日期</th>
+          <th>时间段</th>
+          <th>面积/数量</th>
           <th>订单金额</th>
+          <th>状态</th>
           <th>来源</th>
+          <th>创建时间</th>
         </tr>
       </thead>
       <tbody>
         {% for order in orders %}
         <tr>
-          <td>{{ order.order_no }}</td>
-          <td>{{ order.created_at }}</td>
-          <td>{{ order.appointment_date or "未填写日期" }}</td>
-          <td>{{ order.appointment_period or "未填写时间段" }}</td>
           <td>{{ order.customer_name }}</td>
           <td>{{ order.phone }}</td>
+          <td>{{ order.address }}</td>
           <td>{{ order.service_type }}</td>
-          <td><span class="status status-{{ order.status }}">{{ order.status }}</span></td>
+          <td>{{ order.appointment_date or "未填写日期" }}</td>
+          <td>{{ order.appointment_period or "未填写时间段" }}</td>
+          <td>{{ order.area or "未填" }}</td>
           <td>{% if order.amount %}¥{{ "%.0f"|format(order.amount) }}{% else %}未填写{% endif %}</td>
+          <td><span class="status status-{{ order.status }}">{{ order.status }}</span></td>
           <td>{{ order.source or "未填" }}</td>
+          <td>{{ order.created_at }}</td>
         </tr>
         {% endfor %}
       </tbody>

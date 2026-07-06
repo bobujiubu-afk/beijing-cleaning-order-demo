@@ -22,9 +22,12 @@
         <td>{{ order.appointment_date or "未填写日期" }}</td>
         <td>{{ order.appointment_period or "未填写时间段" }}</td>
         <td><strong>{{ order.customer_name }}</strong></td>
-        <td><a class="phone-link compact-phone" href="tel:{{ order.phone }}">{{ order.phone }}</a></td>
+        <td>{% if order.phone %}<a class="phone-link compact-phone" href="tel:{{ order.phone }}">{{ order.phone }}</a>{% else %}<span class="muted-text">未填写电话</span>{% endif %}</td>
         <td>{{ order.service_type }}</td>
-        <td class="address-cell" title="{{ order.address }}">{{ order.address }}</td>
+        <td class="address-cell" title="{{ order.address }}">
+          {{ order.address or "未填写地址" }}
+          {% if order.address %}<a class="nav-link" href="{{ amap_navigation_url(order.address) }}" target="_blank" rel="noopener">导航</a>{% endif %}
+        </td>
         <td>
           <select class="quick-save status-select" data-order-id="{{ order.id }}" data-field="status">
             {% for item in order_statuses %}
@@ -43,12 +46,9 @@
           <details class="compact-detail">
             <summary>详情</summary>
             <div class="compact-detail-body">
-              <p>面积：{{ order.area or "未填" }}</p>
-              <p>开票：{{ order.need_invoice }}</p>
+              <p>面积/数量：{{ order.area or "未填" }}</p>
               <p>备注：{{ order.remark[:20] }}{% if order.remark|length > 20 %}...{% endif %}</p>
               <p>提交：{{ order.created_at }}</p>
-              <p>更新：{{ order.updated_at or order.created_at }}</p>
-              <p>编号：{{ order.order_no }}</p>
             </div>
           </details>
         </td>
@@ -72,10 +72,17 @@
         <span class="new-badge">新</span>
         {% endif %}
       </div>
+      {% if order.phone %}
       <a class="phone-link" href="tel:{{ order.phone }}">{{ order.phone }}</a>
+      {% else %}
+      <p class="phone-link phone-empty">未填写电话</p>
+      {% endif %}
       <p class="appointment-line">预约：{{ order.appointment_date or "未填写日期" }} {{ order.appointment_period or "未填写时间段" }}</p>
-      <p class="order-brief">{{ order.service_type }} · {{ order.source or "未填来源" }}</p>
-      <p class="order-address">{{ order.address }}</p>
+      <p class="order-brief">项目：{{ order.service_type }} · {{ order.area or "未填数量" }}</p>
+      <p class="order-address">
+        地址：{{ order.address or "未填写地址" }}
+        {% if order.address %}<a class="nav-link" href="{{ amap_navigation_url(order.address) }}" target="_blank" rel="noopener">导航</a>{% endif %}
+      </p>
       <div class="mobile-inline-edit">
         <label>
           状态
@@ -86,7 +93,7 @@
           </select>
         </label>
         <label>
-          订单金额
+          这单多少钱
           <div class="amount-edit">
             <input class="quick-amount" data-order-id="{{ order.id }}" data-field="amount" type="number" step="0.01" value="{{ order.amount }}">
             <button class="tiny-save" type="button" data-order-id="{{ order.id }}">保存</button>
@@ -99,15 +106,12 @@
   <details class="order-detail">
     <summary>展开详情</summary>
     <div class="detail-grid">
-      <div><span>房屋面积</span><strong>{{ order.area or "未填" }}</strong></div>
-      <div><span>是否开票</span><strong>{{ order.need_invoice }}</strong></div>
+      <div><span>面积/数量</span><strong>{{ order.area or "未填" }}</strong></div>
       <div><span>提交时间</span><strong>{{ order.created_at }}</strong></div>
-      <div><span>更新时间</span><strong>{{ order.updated_at or order.created_at }}</strong></div>
-      <div class="wide"><span>订单编号</span><strong>{{ order.order_no }}</strong></div>
       <div class="wide"><span>备注</span><strong>{{ order.remark or "无" }}</strong></div>
     </div>
 
-    <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" onsubmit="return confirm('确定把这条订单移入删除记录吗？数据会保留在数据库里。');">
+    <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" onsubmit="return confirm('确定把这条记录移入删除记录吗？数据会保留在数据库里。');">
       <button class="danger-button" type="submit">移入删除记录</button>
     </form>
   </details>
@@ -116,5 +120,5 @@
 </div>
 
 {% if not orders %}
-<div class="empty">暂无订单，可以先到客户预约页提交一条。</div>
+<div class="empty">今天暂无安排。微信里已经聊清楚的客户，可以点“新增一单”记下来。</div>
 {% endif %}

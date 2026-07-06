@@ -1,7 +1,7 @@
 {
-  "name": "北京东科订单后台",
-  "short_name": "东科订单",
-  "description": "北京东科保洁客户预约订单管理系统",
+  "name": "北京东科保洁接单本",
+  "short_name": "东科接单本",
+  "description": "记录客户电话、地址、上门时间和金额",
   "start_url": "/admin",
   "scope": "/",
   "display": "standalone",

@@ -1,6 +1,15 @@
 {% extends "base.html" %}
-{% block title %}北京东科订单后台{% endblock %}
+{% block title %}北京东科保洁接单本{% endblock %}
 {% block content %}
+<section class="page-heading compact-heading">
+  <div>
+    <span class="eyebrow">北京东科保洁接单本</span>
+    <h1>今天的活</h1>
+    <p>电话、地址、时间、金额都在这里，干完记得改成已完成。</p>
+  </div>
+  <a class="primary-button" href="#quickAdd">新增一单</a>
+</section>
+
 <section class="new-message-alert hidden" id="newMessageAlert" role="alert">
   <div>
     <strong>有新的客户预约，请尽快联系！</strong>
@@ -18,7 +27,7 @@
     <strong id="pendingMessage">
       {% if waiting > 0 %}当前有 {{ waiting }} 个待联系客户{% else %}暂无待联系客户{% endif %}
     </strong>
-    <p>新订单和待联系订单会自动排在最上方，处理后小红点自动消失。</p>
+    <p>这是你的接单本。客户电话、地址、时间和金额都记在这里。</p>
   </div>
 </section>
 
@@ -34,9 +43,54 @@
 <section class="metric-row compact admin-metrics" id="adminMetrics">
   <div class="metric"><span>今日新客户</span><strong id="todayNewCount">{{ today_new }}</strong></div>
   <div class="metric {% if counts['待联系'] > 0 %}metric-danger{% endif %}"><span>待联系</span><strong id="waitingCount">{{ counts["待联系"] }}</strong></div>
-  <div class="metric"><span>已联系</span><strong id="contactedCount">{{ counts["已联系"] }}</strong></div>
-  <div class="metric"><span>已成交</span><strong id="dealedCount">{{ counts["已成交"] }}</strong></div>
+  <div class="metric"><span>已约好</span><strong id="contactedCount">{{ counts["已约好"] }}</strong></div>
+  <div class="metric"><span>已完成</span><strong id="dealedCount">{{ counts["已完成"] }}</strong></div>
 </section>
+
+<details class="panel quick-add-panel" id="quickAdd">
+  <summary>新增一单</summary>
+  <form class="form-grid quick-add-form" method="post" action="{{ url_for('create_order') }}">
+    <label>客户姓名<input name="customer_name" placeholder="例如：张先生"></label>
+    <label>联系电话<input name="phone" inputmode="tel" placeholder="手机号"></label>
+    <label class="wide">上门地址<input name="address" placeholder="小区、楼号、门牌"></label>
+    <label>服务项目
+      <select name="service_type">
+        {% for item in service_types %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>面积/数量<input name="area" placeholder="例如：120㎡ / 2台"></label>
+    <label>预约日期<input name="appointment_date" type="date" value="{{ today_date }}"></label>
+    <label>预约时间段
+      <select name="appointment_period">
+        {% for item in appointment_periods %}
+        <option value="{{ item }}">{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>订单金额<input name="amount" type="number" step="0.01" placeholder="这单多少钱"></label>
+    <label>状态
+      <select name="status">
+        <option value="已约好" selected>已约好</option>
+        <option value="待联系">待联系</option>
+        <option value="已完成">已完成</option>
+        <option value="已取消">已取消</option>
+      </select>
+    </label>
+    <label>来源
+      <select name="source">
+        {% for item in sources %}
+        <option value="{{ item }}" {% if item == "微信沟通" %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="wide">备注<textarea name="remark" rows="2" placeholder="无"></textarea></label>
+    <div class="form-actions wide">
+      <button class="primary-button" type="submit">保存这一单</button>
+    </div>
+  </form>
+</details>
 
 <section class="panel filter-panel">
   <form class="filters" id="adminFilters" method="get">
@@ -45,8 +99,10 @@
       <a class="{% if filters.date_scope == 'tomorrow' %}active{% endif %}" href="{{ url_for('admin', date_scope='tomorrow') }}">明天</a>
       <a class="{% if filters.date_scope == 'week' %}active{% endif %}" href="{{ url_for('admin', date_scope='week') }}">本周</a>
       <a class="{% if filters.date_scope == 'all' %}active{% endif %}" href="{{ url_for('admin', date_scope='all') }}">全部</a>
+      <a class="{% if filters.status == '待联系' %}active{% endif %}" href="{{ url_for('admin', date_scope=filters.date_scope, status='待联系') }}">待联系</a>
+      <a class="{% if filters.status == '已完成' %}active{% endif %}" href="{{ url_for('admin', date_scope=filters.date_scope, status='已完成') }}">已完成</a>
     </div>
-    <input name="keyword" value="{{ filters.keyword }}" placeholder="搜索姓名、电话、地址">
+    <input name="keyword" value="{{ filters.keyword }}" placeholder="搜索客户、电话、地址">
     <button class="filter-toggle" type="button" aria-expanded="false">筛选</button>
     <div class="filter-extra">
       <input name="custom_date" type="date" value="{{ filters.custom_date }}" aria-label="自定义日期">

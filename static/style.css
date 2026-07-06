@@ -205,6 +205,15 @@ nav a,
   max-width: 720px;
 }
 
+.compact-heading {
+  margin-bottom: 14px;
+  padding: 20px;
+}
+
+.compact-heading h1 {
+  font-size: clamp(26px, 4vw, 38px);
+}
+
 .eyebrow {
   letter-spacing: 0;
   font-weight: 800;
@@ -307,6 +316,10 @@ textarea {
   font-weight: 500;
 }
 
+.muted-text {
+  color: var(--muted);
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -321,6 +334,21 @@ textarea {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.quick-add-panel {
+  margin-bottom: 16px;
+}
+
+.quick-add-panel summary {
+  cursor: pointer;
+  color: var(--brand-dark);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.quick-add-form {
+  margin-top: 16px;
 }
 
 .success-box {
@@ -630,6 +658,19 @@ textarea {
   white-space: nowrap;
 }
 
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-left: 8px;
+  padding: 0 9px;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .status-select,
 .quick-amount {
   min-height: 36px;
@@ -749,12 +790,12 @@ textarea {
   background: #fff1cd;
 }
 
-.status-已联系 {
+.status-已约好 {
   color: #0b5d88;
   background: #dff2ff;
 }
 
-.status-已成交 {
+.status-已完成 {
   color: #0f6b48;
   background: #dcf7e9;
 }
@@ -1158,7 +1199,7 @@ textarea {
     font-size: 19px;
   }
 
-  .phone-link {
+.phone-link {
     font-size: 24px;
   }
 
@@ -1176,4 +1217,9 @@ textarea {
   .bar-row {
     grid-template-columns: 90px 1fr 32px;
   }
+}
+
+.phone-empty {
+  color: var(--muted);
+  text-decoration: none;
 }

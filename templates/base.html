@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#176f5c">
-  <title>{% block title %}北京东科保洁客户预约系统{% endblock %}</title>
+  <title>{% block title %}北京东科保洁接单本{% endblock %}</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
@@ -16,17 +16,17 @@
       <span class="brand-mark">东科</span>
       <span>
         <strong>北京东科保洁服务有限公司</strong>
-        <small>{% if public_page|default(false) %}客户预约登记{% else %}{{ page_label|default("订单管理后台") }}{% endif %}</small>
+        <small>{% if public_page|default(false) %}客户预约登记{% else %}{{ page_label|default("接单本") }}{% endif %}</small>
       </span>
     </a>
     {% if not public_page|default(false) %}
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="topNav">菜单</button>
     <nav id="topNav">
       {% if session.get("admin_logged_in") %}
-      <a href="{{ url_for('admin') }}">老板后台</a>
-      <a href="{{ url_for('appointment_qr') }}">预约二维码</a>
-      <a href="{{ url_for('stats') }}">数据统计</a>
-      <a href="{{ url_for('export_list') }}">导出记录</a>
+      <a href="{{ url_for('admin', date_scope='today') }}">今天</a>
+      <a href="{{ url_for('admin', date_scope='all') }}">全部</a>
+      <a href="{{ url_for('admin', date_scope='today') }}#quickAdd">新增一单</a>
+      <a href="{{ url_for('stats') }}">统计</a>
       <button class="nav-icon-button" type="button" id="reminderSettingsButton" aria-expanded="false" title="消息提醒设置">⚙</button>
       <a href="{{ url_for('logout') }}">退出登录</a>
       {% else %}

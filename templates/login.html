@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}后台登录 - 北京东科保洁{% endblock %}
+{% block title %}接单本登录 - 北京东科保洁{% endblock %}
 {% block content %}
 <section class="success-box login-box">
-  <h1>老板后台登录</h1>
-  <p>请输入后台密码后查看订单、统计和导出数据。</p>
+  <h1>老板接单本登录</h1>
+  <p>登录后直接看今天的活，电话、地址、时间和金额都在里面。</p>
   <form method="post" action="{{ url_for('login') }}" class="login-form">
     <label>
-      后台密码
-      <input name="password" type="password" required autofocus placeholder="请输入后台密码">
+      接单本密码
+      <input name="password" type="password" required autofocus placeholder="请输入密码">
     </label>
-    <button class="primary-button" type="submit">进入后台</button>
+    <button class="primary-button" type="submit">进入接单本</button>
   </form>
 </section>
 {% endblock %}
