@@ -434,7 +434,7 @@
       .then(function (data) {
         updateCounts(data);
         maybeTriggerReminder(data);
-        if (!isEditing() && typeof data.html === "string") {
+        if ((!isEditing() || options.forceReplace) && typeof data.html === "string") {
           list.innerHTML = data.html;
           if (options.focusOrderId) {
             window.setTimeout(function () {
@@ -475,12 +475,12 @@
     if (hiddenScope) hiddenScope.value = scope;
   }
 
-  function replaceOrdersWithParams(params, focusOrderId) {
+  function replaceOrdersWithParams(params, focusOrderId, forceReplace) {
     var query = params.toString();
     var nextUrl = window.location.pathname + (query ? "?" + query : "");
     window.history.pushState({ adminFilters: query }, "", nextUrl);
     updateDateTabState(params);
-    return refreshOrders({ focusOrderId: focusOrderId });
+    return refreshOrders({ focusOrderId: focusOrderId, forceReplace: forceReplace });
   }
 
   function paramsFromForm(form) {
@@ -491,15 +491,47 @@
     return params;
   }
 
+  function fetchOrderCounts() {
+    return fetch("/api/order-counts", {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      cache: "no-store"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("counts failed");
+      return response.json();
+    });
+  }
+
   function viewPendingOrders() {
     hideMessageAlert();
     stopTitleFlash();
-    if (focusOrder(currentLatestOrderId)) return;
-    var params = new URLSearchParams(window.location.search);
-    params.set("date_scope", "all");
-    params.set("status", "待联系");
-    params.delete("custom_date");
-    replaceOrdersWithParams(params, currentLatestOrderId);
+    setStatus("正在定位最新待联系客户...", false);
+
+    fetchOrderCounts()
+      .then(function (data) {
+        updateCounts(data);
+        currentLatestOrderId = Number(data.latest_order_id || 0);
+        if (!currentLatestOrderId) {
+          setStatus("暂无待联系客户。", false);
+          return refreshOrders({ forceReplace: true });
+        }
+
+        var params = new URLSearchParams();
+        params.set("date_scope", "all");
+        params.set("status", "待联系");
+        params.set("focus", currentLatestOrderId);
+        return replaceOrdersWithParams(params, currentLatestOrderId, true).then(function () {
+          if (!focusOrder(currentLatestOrderId)) {
+            setStatus("已切到待联系列表，最新客户在列表上方。", true);
+          }
+        });
+      })
+      .catch(function () {
+        var fallbackParams = new URLSearchParams();
+        fallbackParams.set("date_scope", "all");
+        fallbackParams.set("status", "待联系");
+        if (currentLatestOrderId) fallbackParams.set("focus", currentLatestOrderId);
+        replaceOrdersWithParams(fallbackParams, currentLatestOrderId, true);
+      });
   }
 
   function saveOrderField(orderId, payload) {
@@ -709,8 +741,10 @@
     }, true);
 
     if (qs("#orderList")) {
-      updateDateTabState(new URLSearchParams(window.location.search || "date_scope=today"));
-      refreshOrders();
+      var initialParams = new URLSearchParams(window.location.search || "date_scope=today");
+      var initialFocusOrderId = Number(initialParams.get("focus") || 0);
+      updateDateTabState(initialParams);
+      refreshOrders({ focusOrderId: initialFocusOrderId });
       window.setInterval(refreshOrders, 5000);
     }
   });
