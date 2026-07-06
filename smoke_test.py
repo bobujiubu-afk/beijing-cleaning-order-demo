@@ -72,6 +72,7 @@ def main():
     assert api_data["new_count"] >= 3
     assert api_data["latest_order_id"] > 0
     assert api_data["latest_order"]["customer_name"] == "测试客户自测三"
+    assert api_data["latest_order"]["status"] == "待联系"
     assert "测试客户自测三" in api_data["html"]
     assert "预约日期".encode("utf-8") in login.data
     assert "订单金额".encode("utf-8") in login.data

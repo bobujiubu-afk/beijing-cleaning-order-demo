@@ -496,7 +496,9 @@
     stopTitleFlash();
     if (focusOrder(currentLatestOrderId)) return;
     var params = new URLSearchParams(window.location.search);
+    params.set("date_scope", "all");
     params.set("status", "待联系");
+    params.delete("custom_date");
     replaceOrdersWithParams(params, currentLatestOrderId);
   }
 
