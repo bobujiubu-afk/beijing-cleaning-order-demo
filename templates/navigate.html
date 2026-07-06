@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>正在打开高德导航</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      color: #17211f;
+      background: #f4f7f5;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+    }
+    .box {
+      max-width: 520px;
+      margin: 12vh auto 0;
+      padding: 22px;
+      background: #fff;
+      border: 1px solid #dfe7e3;
+      border-radius: 8px;
+      box-shadow: 0 14px 34px rgba(17, 35, 31, 0.08);
+    }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    p { color: #63706c; line-height: 1.6; }
+    a {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 46px;
+      margin-top: 12px;
+      color: #fff;
+      background: #176f5c;
+      border-radius: 8px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    .muted-link {
+      color: #176f5c;
+      background: #fff;
+      border: 1px solid #bfd7cf;
+    }
+  </style>
+</head>
+<body>
+  <section class="box">
+    <h1>正在打开高德地图</h1>
+    <p>地址：{{ address }}</p>
+    <p>如果没有自动打开高德 App，请点下面按钮。</p>
+    <a id="openApp" href="{{ web_url }}">打开高德导航</a>
+    <a class="muted-link" href="{{ url_for('admin') }}">返回接单本</a>
+  </section>
+  <script>
+    (function () {
+      var androidUrl = "{{ android_url }}";
+      var iosUrl = "{{ ios_url }}";
+      var webUrl = "{{ web_url }}";
+      var ua = navigator.userAgent || "";
+      var isIOS = /iPhone|iPad|iPod/i.test(ua);
+      var appUrl = isIOS ? iosUrl : androidUrl;
+      var openedAt = Date.now();
+      var button = document.getElementById("openApp");
+      button.href = appUrl;
+      window.location.href = appUrl;
+      window.setTimeout(function () {
+        if (Date.now() - openedAt < 1800) {
+          window.location.href = webUrl;
+        }
+      }, 1300);
+    })();
+  </script>
+</body>
+</html>

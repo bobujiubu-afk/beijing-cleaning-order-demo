@@ -528,6 +528,38 @@
     saveOrderField(input.dataset.orderId, { amount: input.value });
   }
 
+  function setupQuickAddDraft() {
+    var form = qs(".quick-add-form[data-draft-key]");
+    if (!form) return;
+    var storageKey = form.dataset.draftKey;
+    var hint = qs("#quickAddDraftHint");
+
+    try {
+      var saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+      Array.prototype.forEach.call(form.elements, function (field) {
+        if (!field.name || saved[field.name] == null || field.value) return;
+        field.value = saved[field.name];
+      });
+      if (hint && Object.keys(saved).length > 0) hint.textContent = "已恢复上次没保存完的内容。";
+    } catch (error) {}
+
+    function saveDraft() {
+      var data = {};
+      Array.prototype.forEach.call(form.elements, function (field) {
+        if (!field.name) return;
+        data[field.name] = field.value || "";
+      });
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      if (hint) hint.textContent = "已自动暂存，点“保存这一单”后正式入账。";
+    }
+
+    form.addEventListener("input", saveDraft);
+    form.addEventListener("change", saveDraft);
+    form.addEventListener("submit", function () {
+      localStorage.removeItem(storageKey);
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     document.title = normalTitle;
     ensureFavicon();
@@ -535,6 +567,7 @@
 
     var filterButton = qs(".filter-toggle");
     var filters = qs("#adminFilters");
+    setupQuickAddDraft();
     if (filterButton && filters) {
       filterButton.addEventListener("click", function () {
         var open = filters.classList.toggle("filters-open");

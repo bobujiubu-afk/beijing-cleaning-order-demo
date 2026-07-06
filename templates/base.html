@@ -23,9 +23,6 @@
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="topNav">菜单</button>
     <nav id="topNav">
       {% if session.get("admin_logged_in") %}
-      <a href="{{ url_for('admin', date_scope='today') }}">今天</a>
-      <a href="{{ url_for('admin', date_scope='all') }}">全部</a>
-      <a href="{{ url_for('admin', date_scope='today') }}#quickAdd">新增一单</a>
       <a href="{{ url_for('stats') }}">统计</a>
       <button class="nav-icon-button" type="button" id="reminderSettingsButton" aria-expanded="false" title="消息提醒设置">⚙</button>
       <a href="{{ url_for('logout') }}">退出登录</a>

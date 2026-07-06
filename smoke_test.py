@@ -79,7 +79,13 @@ def main():
     assert "已报价" not in api_data["html"]
     assert "已成交" not in api_data["html"]
     assert "导航".encode("utf-8") in login.data
-    assert "https://uri.amap.com/search?keyword=".encode("utf-8") in login.data
+    assert "/navigate?address=".encode("utf-8") in login.data
+
+    nav_page = client.get("/navigate?address=朝阳区测试小区")
+    assert nav_page.status_code == 200
+    assert "正在打开高德地图".encode("utf-8") in nav_page.data
+    assert "androidamap://route/plan/".encode("utf-8") in nav_page.data
+    assert "iosamap://path".encode("utf-8") in nav_page.data
 
     qr_page = client.get("/appointment-qr")
     assert qr_page.status_code == 200 and "客户预约链接".encode("utf-8") in qr_page.data

@@ -340,6 +340,10 @@ textarea {
   margin-bottom: 16px;
 }
 
+.top-quick-add {
+  padding: 14px 16px;
+}
+
 .quick-add-panel summary {
   cursor: pointer;
   color: var(--brand-dark);
@@ -349,6 +353,13 @@ textarea {
 
 .quick-add-form {
   margin-top: 16px;
+}
+
+.draft-hint {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .success-box {

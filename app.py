@@ -373,8 +373,14 @@ def amap_navigation_url(address):
     address = clean_text(address, 200)
     if not address:
         return ""
-    keyword = address if "北京" in address else f"北京 {address}"
-    return "https://uri.amap.com/search?keyword=" + quote_plus(keyword)
+    return url_for("navigate_to_address", address=address)
+
+
+def normalize_nav_address(address):
+    address = clean_text(address, 200)
+    if not address:
+        return ""
+    return address if "北京" in address else f"北京 {address}"
 
 
 def get_latest_new_order():
@@ -975,6 +981,25 @@ def appointment_qr_png():
     image.save(stream, format="PNG")
     stream.seek(0)
     return send_file(stream, mimetype="image/png")
+
+
+@app.route("/navigate")
+def navigate_to_address():
+    if not require_admin():
+        return redirect(url_for("login"))
+    address = normalize_nav_address(request.args.get("address", ""))
+    if not address:
+        flash("这单没有填写上门地址，不能导航。", "error")
+        return redirect(url_for("admin"))
+    encoded = quote_plus(address)
+    return render_template(
+        "navigate.html",
+        address=address,
+        android_url=f"androidamap://route/plan/?sourceApplication=dongke-jiedanben&dname={encoded}&dev=0&t=0",
+        ios_url=f"iosamap://path?sourceApplication=dongke-jiedanben&dname={encoded}&dev=0&t=0",
+        web_url=f"https://uri.amap.com/search?keyword={encoded}",
+        public_page=True,
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
