@@ -17,7 +17,7 @@
     </thead>
     <tbody>
       {% for order in orders %}
-      <tr class="{% if order.is_new or order.status == '待联系' %}order-row-new{% endif %}">
+      <tr id="order-row-{{ order.id }}" data-order-id="{{ order.id }}" class="{% if order.is_new or order.status == '待联系' %}order-row-new{% endif %} {% if order.status == '已取消' %}order-canceled{% endif %}">
         <td>{% if order.is_new or order.status == '待联系' %}<span class="red-dot" aria-label="新订单"></span>{% endif %}</td>
         <td>{{ order.appointment_date or "未填写日期" }}</td>
         <td>{{ order.appointment_period or "未填写时间段" }}</td>
@@ -60,7 +60,7 @@
 
 <div class="mobile-order-cards">
 {% for order in orders %}
-<article class="order-card {% if order.is_new or order.status == '待联系' %}order-card-new{% endif %}">
+<article id="order-card-{{ order.id }}" data-order-id="{{ order.id }}" class="order-card {% if order.is_new or order.status == '待联系' %}order-card-new{% endif %} {% if order.status == '已取消' %}order-canceled{% endif %}">
   <div class="order-main">
     <div class="order-primary">
       <div class="order-title">

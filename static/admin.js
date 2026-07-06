@@ -12,6 +12,7 @@
   var audioContext = null;
   var defaultIconHref = null;
   var soundFile = "/static/sounds/new-order.wav";
+  var currentLatestOrderId = 0;
 
   function qs(selector) {
     return document.querySelector(selector);
@@ -31,6 +32,7 @@
 
   function updateCounts(data) {
     var pending = data.pending_count || 0;
+    currentLatestOrderId = Number(data.latest_order_id || currentLatestOrderId || 0);
     var alertBox = qs("#newOrderAlert");
     var dot = qs("#pendingDot");
     if (alertBox) alertBox.classList.toggle("has-new", pending > 0);
@@ -418,9 +420,10 @@
   }
 
   function refreshOrders() {
+    var options = arguments.length > 0 && arguments[0] ? arguments[0] : {};
     var list = qs("#orderList");
-    if (!list) return;
-    fetch("/api/orders" + window.location.search, {
+    if (!list) return Promise.resolve();
+    return fetch("/api/orders" + window.location.search, {
       headers: { "X-Requested-With": "XMLHttpRequest" },
       cache: "no-store"
     })
@@ -433,6 +436,11 @@
         maybeTriggerReminder(data);
         if (!isEditing() && typeof data.html === "string") {
           list.innerHTML = data.html;
+          if (options.focusOrderId) {
+            window.setTimeout(function () {
+              focusOrder(options.focusOrderId);
+            }, 80);
+          }
         }
       })
       .catch(function () {
@@ -440,16 +448,53 @@
       });
   }
 
+  function focusOrder(orderId) {
+    if (!orderId) return false;
+    var desktopRow = qs("#order-row-" + orderId);
+    var mobileCard = qs("#order-card-" + orderId);
+    var target = window.matchMedia("(max-width: 860px)").matches ? (mobileCard || desktopRow) : (desktopRow || mobileCard);
+    if (!target) return false;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("order-focus");
+    window.setTimeout(function () {
+      target.classList.remove("order-focus");
+    }, 2200);
+    return true;
+  }
+
+  function updateDateTabState(params) {
+    var scope = params.get("date_scope") || "today";
+    document.querySelectorAll(".date-tabs a").forEach(function (link) {
+      var linkScope = new URL(link.href, window.location.origin).searchParams.get("date_scope") || "today";
+      link.classList.toggle("active", linkScope === scope);
+    });
+    var hiddenScope = qs("#adminFilters input[name='date_scope']");
+    if (hiddenScope) hiddenScope.value = scope;
+  }
+
+  function replaceOrdersWithParams(params, focusOrderId) {
+    var query = params.toString();
+    var nextUrl = window.location.pathname + (query ? "?" + query : "");
+    window.history.pushState({ adminFilters: query }, "", nextUrl);
+    updateDateTabState(params);
+    return refreshOrders({ focusOrderId: focusOrderId });
+  }
+
+  function paramsFromForm(form) {
+    var params = new URLSearchParams();
+    new FormData(form).forEach(function (value, key) {
+      if (value !== "") params.set(key, value);
+    });
+    return params;
+  }
+
   function viewPendingOrders() {
     hideMessageAlert();
     stopTitleFlash();
+    if (focusOrder(currentLatestOrderId)) return;
     var params = new URLSearchParams(window.location.search);
-    if (params.get("status") !== "待联系") {
-      window.location.href = "/admin?status=待联系";
-      return;
-    }
-    var list = qs("#orderList");
-    if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
+    params.set("status", "待联系");
+    replaceOrdersWithParams(params, currentLatestOrderId);
   }
 
   function saveOrderField(orderId, payload) {
@@ -501,7 +546,7 @@
         customDate.addEventListener("change", function () {
           if (customDate.value) {
             dateScope.value = "custom";
-            filters.submit();
+            replaceOrdersWithParams(paramsFromForm(filters));
           }
         });
       }
@@ -510,9 +555,30 @@
     var settingsButton = qs("#reminderSettingsButton");
     var settingsPanel = qs("#reminderSettingsPanel");
     if (settingsButton && settingsPanel) {
-      settingsButton.addEventListener("click", function () {
+      settingsButton.addEventListener("click", function (event) {
+        event.stopPropagation();
         var open = settingsPanel.classList.toggle("hidden") === false;
         settingsButton.setAttribute("aria-expanded", open ? "true" : "false");
+        var topbar = document.querySelector(".topbar");
+        var menuButton = document.querySelector(".menu-toggle");
+        if (topbar) topbar.classList.remove("menu-open");
+        if (menuButton) menuButton.setAttribute("aria-expanded", "false");
+      });
+
+      settingsPanel.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+
+      document.addEventListener("click", function () {
+        if (settingsPanel.classList.contains("hidden")) return;
+        settingsPanel.classList.add("hidden");
+        settingsButton.setAttribute("aria-expanded", "false");
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape") return;
+        settingsPanel.classList.add("hidden");
+        settingsButton.setAttribute("aria-expanded", "false");
       });
     }
 
@@ -548,6 +614,35 @@
 
     var viewButton = qs("#viewPendingButton");
     if (viewButton) viewButton.addEventListener("click", viewPendingOrders);
+    var pendingMessage = qs("#pendingMessage");
+    if (pendingMessage) pendingMessage.addEventListener("click", viewPendingOrders);
+
+    document.querySelectorAll(".date-tabs a").forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+        var url = new URL(link.href, window.location.origin);
+        var params = new URLSearchParams(window.location.search);
+        params.set("date_scope", url.searchParams.get("date_scope") || "today");
+        params.delete("custom_date");
+        replaceOrdersWithParams(params);
+      });
+    });
+
+    if (filters) {
+      filters.addEventListener("submit", function (event) {
+        event.preventDefault();
+        replaceOrdersWithParams(paramsFromForm(filters));
+      });
+
+      var resetLink = filters.querySelector("a[href$='/admin']");
+      if (resetLink) {
+        resetLink.addEventListener("click", function (event) {
+          event.preventDefault();
+          filters.reset();
+          replaceOrdersWithParams(new URLSearchParams("date_scope=today"));
+        });
+      }
+    }
 
     document.addEventListener("change", function (event) {
       var target = event.target;
@@ -571,9 +666,15 @@
     }, true);
 
     if (qs("#orderList")) {
+      updateDateTabState(new URLSearchParams(window.location.search || "date_scope=today"));
       refreshOrders();
       window.setInterval(refreshOrders, 5000);
     }
+  });
+
+  window.addEventListener("popstate", function () {
+    updateDateTabState(new URLSearchParams(window.location.search || "date_scope=today"));
+    refreshOrders();
   });
 
   window.addEventListener("beforeunload", function () {

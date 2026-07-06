@@ -449,6 +449,7 @@ textarea {
   gap: 8px;
   align-items: center;
   font-size: 20px;
+  cursor: pointer;
 }
 
 .new-order-alert p {
@@ -600,6 +601,21 @@ textarea {
 
 .order-row-new {
   background: #fffafa;
+}
+
+.order-canceled {
+  filter: grayscale(0.75);
+  opacity: 0.56;
+}
+
+.order-canceled .phone-link {
+  color: #69736f;
+}
+
+.order-focus {
+  outline: 3px solid rgba(243, 184, 63, 0.9);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px rgba(243, 184, 63, 0.18);
 }
 
 .compact-phone {
