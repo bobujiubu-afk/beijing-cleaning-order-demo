@@ -691,14 +691,13 @@
       link.addEventListener("click", function (event) {
         event.preventDefault();
         var url = new URL(link.href, window.location.origin);
-        var params = new URLSearchParams(window.location.search);
+        var params = new URLSearchParams();
         params.set("date_scope", url.searchParams.get("date_scope") || "today");
         if (url.searchParams.has("status")) {
           params.set("status", url.searchParams.get("status"));
         } else if (["today", "tomorrow", "week", "all"].indexOf(url.searchParams.get("date_scope")) !== -1) {
           params.delete("status");
         }
-        params.delete("custom_date");
         replaceOrdersWithParams(params);
       });
     });

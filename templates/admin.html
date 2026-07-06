@@ -90,8 +90,9 @@
       <a class="{% if filters.date_scope == 'tomorrow' %}active{% endif %}" href="{{ url_for('admin', date_scope='tomorrow') }}">明天</a>
       <a class="{% if filters.date_scope == 'week' %}active{% endif %}" href="{{ url_for('admin', date_scope='week') }}">本周</a>
       <a class="{% if filters.date_scope == 'all' %}active{% endif %}" href="{{ url_for('admin', date_scope='all') }}">全部</a>
-      <a class="{% if filters.status == '待联系' %}active{% endif %}" href="{{ url_for('admin', date_scope=filters.date_scope, status='待联系') }}">待联系</a>
-      <a class="{% if filters.status == '已完成' %}active{% endif %}" href="{{ url_for('admin', date_scope=filters.date_scope, status='已完成') }}">已完成</a>
+      <a class="{% if filters.status == '待联系' %}active{% endif %}" href="{{ url_for('admin', date_scope='all', status='待联系') }}">待联系</a>
+      <a class="{% if filters.status == '已约好' %}active{% endif %}" href="{{ url_for('admin', date_scope='all', status='已约好') }}">已约好</a>
+      <a class="{% if filters.status == '已完成' %}active{% endif %}" href="{{ url_for('admin', date_scope='all', status='已完成') }}">已完成</a>
     </div>
     <input name="keyword" value="{{ filters.keyword }}" placeholder="搜索客户、电话、地址">
     <button class="filter-toggle" type="button" aria-expanded="false">筛选</button>
